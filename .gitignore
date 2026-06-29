@@ -1,0 +1,105 @@
+# =====================================================================
+# Unity
+# =====================================================================
+unity/[Ll]ibrary/
+unity/[Tt]emp/
+unity/[Oo]bj/
+unity/[Bb]uild/
+unity/[Bb]uilds/
+unity/[Ll]ogs/
+unity/[Uu]ser[Ss]ettings/
+unity/[Mm]emoryCaptures/
+unity/[Rr]ecordings/
+
+# Asset meta data should only be ignored when the corresponding asset is also ignored
+!unity/[Aa]ssets/**/*.meta
+
+# Unity generated
+unity/*.csproj
+unity/*.unityproj
+unity/*.sln
+unity/*.suo
+unity/*.user
+unity/*.userprefs
+unity/*.pidb
+unity/*.booproj
+unity/*.svd
+unity/*.pdb
+unity/*.mdb
+unity/*.opendb
+unity/*.VC.db
+
+# Unity3D generated meta files
+unity/*.pidb.meta
+unity/*.pdb.meta
+unity/*.mdb.meta
+
+# Unity3D generated file on crash reports
+unity/sysinfo.txt
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Crashlytics
+unity/crashlytics-build.properties
+
+# Packed Addressables
+unity/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+
+# Temporary auto-generated Android Assets
+unity/[Aa]ssets/[Ss]treamingAssets/aa.meta
+unity/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# =====================================================================
+# Python
+# =====================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# =====================================================================
+# Logs & experiment outputs (keep folders, ignore generated data)
+# =====================================================================
+server/logs/*.csv
+server/logs/*.log
+experiments/results/
+*.csv
+!shared/**/*.csv
+
+# =====================================================================
+# IDE / OS
+# =====================================================================
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

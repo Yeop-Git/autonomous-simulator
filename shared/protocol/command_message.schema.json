@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://autonomous-v2x-sim/protocol/command_message.json",
+  "title": "CommandMessage",
+  "description": "Python -> Unity. Per-vehicle control commands for one tick.",
+  "type": "object",
+  "required": ["time", "commands"],
+  "properties": {
+    "time": {
+      "type": "number",
+      "description": "Echoes the state time this command set responds to. Used to detect lag."
+    },
+    "tick": {
+      "type": "integer",
+      "description": "Echoes the state tick this command responds to."
+    },
+    "commands": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/command" }
+    }
+  },
+  "definitions": {
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "command": {
+      "type": "object",
+      "required": ["vehicle_id", "target_speed", "behavior"],
+      "properties": {
+        "vehicle_id": { "type": "string" },
+        "target_speed": {
+          "type": "number",
+          "description": "Desired speed in m/s. 0 = stop."
+        },
+        "target_lane": { "type": ["string", "null"] },
+        "behavior": {
+          "type": "string",
+          "enum": [
+            "LaneKeeping", "Following", "LaneChanging",
+            "Stopping", "EmergencyBraking", "WaitingAtIntersection", "Arrived"
+          ]
+        },
+        "path": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/vec3" },
+          "description": "Waypoints the vehicle should follow (world coords)."
+        },
+        "lka_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether lateral lane-keeping assist is active."
+        }
+      }
+    }
+  }
+}

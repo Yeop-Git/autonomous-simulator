@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://autonomous-v2x-sim/protocol/state_message.json",
+  "title": "StateMessage",
+  "description": "Unity -> Python. Full world state snapshot sent every simulation tick.",
+  "type": "object",
+  "required": ["time", "vehicles", "objects", "events"],
+  "properties": {
+    "time": {
+      "type": "number",
+      "description": "Simulation time in seconds since scene start."
+    },
+    "tick": {
+      "type": "integer",
+      "description": "Monotonic simulation frame counter. Used for ordering / sync."
+    },
+    "scenario": {
+      "type": "string",
+      "enum": ["highway", "urban", "lka_test"],
+      "description": "Active scenario, lets the server pick the right policy."
+    },
+    "vehicles": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/vehicle" }
+    },
+    "objects": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/moving_object" }
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/event" }
+    }
+  },
+  "definitions": {
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "[x, y, z] in Unity world coordinates (meters)."
+    },
+    "vehicle": {
+      "type": "object",
+      "required": ["id", "position", "velocity", "heading", "current_lane"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "default": "car" },
+        "position": { "$ref": "#/definitions/vec3" },
+        "velocity": { "$ref": "#/definitions/vec3" },
+        "acceleration": { "$ref": "#/definitions/vec3" },
+        "heading": {
+          "type": "number",
+          "description": "Yaw in degrees, 0 = +Z, increasing clockwise (Unity convention)."
+        },
+        "current_lane": { "type": "string" },
+        "target_lane": { "type": ["string", "null"] },
+        "behavior_state": {
+          "type": "string",
+          "enum": [
+            "Idle", "RoutePlanning", "LaneKeeping", "Following",
+            "LaneChanging", "Stopping", "WaitingAtIntersection",
+            "EmergencyBraking", "Replanning", "Arrived"
+          ]
+        }
+      }
+    },
+    "moving_object": {
+      "type": "object",
+      "required": ["id", "type", "position", "velocity"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": [
+            "pedestrian", "bicycle", "emergency_vehicle",
+            "static_obstacle", "unexpected_obstacle"
+          ]
+        },
+        "position": { "$ref": "#/definitions/vec3" },
+        "velocity": { "$ref": "#/definitions/vec3" },
+        "radius": { "type": "number", "default": 0.4 }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "PedestrianSuddenCrossing", "VehicleBreakdown",
+            "FallingObject", "EmergencyVehicle", "ConstructionZone"
+          ]
+        },
+        "position": { "$ref": "#/definitions/vec3" },
+        "lane_id": { "type": ["string", "null"] },
+        "payload": {
+          "type": "object",
+          "description": "Event-specific extra data (free-form)."
+        }
+      }
+    }
+  }
+}
