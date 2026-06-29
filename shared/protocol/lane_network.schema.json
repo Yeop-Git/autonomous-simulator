@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://autonomous-v2x-sim/protocol/lane_network.json",
+  "title": "LaneNetwork",
+  "description": "Static road/lane graph exported from the Unity scene and loaded by the Python server. Authored once per scene (by a human in the editor or a generator), it is the search space for the planners. Geometry is Unity world space, meters.",
+  "type": "object",
+  "required": ["lanes"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable network name, e.g. 'highway_straight'."
+    },
+    "scenario": {
+      "type": "string",
+      "enum": ["highway", "urban", "lka_test"],
+      "description": "Which scenario this network belongs to."
+    },
+    "lanes": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/lane" }
+    }
+  },
+  "definitions": {
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "[x, y, z] in Unity world coordinates (meters)."
+    },
+    "lane": {
+      "type": "object",
+      "required": ["id", "centerline", "next_lane_ids"],
+      "properties": {
+        "id": { "type": "string" },
+        "centerline": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/definitions/vec3" },
+          "description": "Ordered centerline waypoints, start -> end of lane."
+        },
+        "width": { "type": "number", "default": 3.5 },
+        "speed_limit": {
+          "type": "number",
+          "default": 13.9,
+          "description": "Speed limit in m/s (13.9 ~= 50 km/h, 27.8 ~= 100 km/h)."
+        },
+        "left_lane_id": {
+          "type": ["string", "null"],
+          "description": "Adjacent lane to the left (same direction), for lane changes."
+        },
+        "right_lane_id": {
+          "type": ["string", "null"],
+          "description": "Adjacent lane to the right (same direction)."
+        },
+        "next_lane_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Lane-graph successors reachable by driving forward off the end."
+        }
+      }
+    }
+  }
+}

@@ -1,28 +1,31 @@
-"""Central V2X control server — minimal vertical-slice version.
+"""Central V2X control server — WebSocket front-end for the vertical slice.
 
-Phase 2 starting point. This server:
-  1. accepts a WebSocket connection from Unity,
-  2. receives a StateMessage every tick,
-  3. validates it against shared/protocol/state_message.schema.json,
-  4. returns a trivial CommandMessage (hold lane, keep current speed).
-
-The point of this file is to PROVE the Unity <-> Python loop and time-sync
-before any real planning exists. Replace the dummy logic in decide() with
-calls into world_model / planners / controllers as later phases land.
+This file is now thin: all decision logic lives in ``central_control``.
+Here we only:
+  1. load the lane network (from a JSON export, or a synthetic fallback),
+  2. accept a WebSocket connection from Unity,
+  3. validate each StateMessage against the schema,
+  4. run sync checks (out-of-order / duplicate tick warnings, tick echo),
+  5. hand the state to ``CentralController`` and return its CommandMessage.
 
 Run:
     pip install -r requirements.txt
-    python main.py
+    python main.py                      # synthetic highway network
+    python main.py --network net.json   # network exported from Unity
+    python main.py --scenario urban_grid
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
-import math
 from pathlib import Path
 
 import jsonschema
 import websockets
+
+from central_control import CentralController
+from world_model import LaneNetwork
 
 PROTOCOL_DIR = Path(__file__).resolve().parents[1] / "shared" / "protocol"
 HOST = "localhost"
@@ -38,32 +41,18 @@ STATE_SCHEMA = _load_schema("state_message.schema.json")
 COMMAND_SCHEMA = _load_schema("command_message.schema.json")
 
 
-def decide(state: dict) -> dict:
-    """Dummy policy: every vehicle holds its lane at its current speed.
+def load_network(network_path: str | None, scenario: str) -> LaneNetwork:
+    if network_path:
+        print(f"[server] loading lane network from {network_path}")
+        return LaneNetwork.from_json(network_path)
+    # Synthetic fallback so the server is runnable with no Unity export yet.
+    from scenarios import networks
 
-    Replace with real central control. This exists only to close the loop.
-    """
-    commands = []
-    for v in state.get("vehicles", []):
-        vel = v.get("velocity", [0.0, 0.0, 0.0])
-        speed = math.sqrt(sum(c * c for c in vel))
-        commands.append(
-            {
-                "vehicle_id": v["id"],
-                "target_speed": round(speed, 3),
-                "target_lane": v.get("current_lane"),
-                "behavior": "LaneKeeping",
-                "lka_enabled": True,
-            }
-        )
-    return {
-        "time": state.get("time", 0.0),
-        "tick": state.get("tick", 0),
-        "commands": commands,
-    }
+    print(f"[server] no --network given; using synthetic '{scenario}'")
+    return networks.build(scenario)
 
 
-async def handle(ws):
+async def handle(ws, controller: CentralController):
     print(f"[server] Unity connected: {ws.remote_address}")
     last_tick = -1
     try:
@@ -75,24 +64,46 @@ async def handle(ws):
                 print(f"[server] bad state message: {e}")
                 continue
 
-            # crude lag / ordering check — surfaces sync problems early
+            # --- sync checks: surface drift loudly (project's #1 risk) ---
             tick = state.get("tick", last_tick + 1)
-            if tick <= last_tick:
-                print(f"[server] WARNING out-of-order tick {tick} <= {last_tick}")
-            last_tick = tick
+            if tick == last_tick:
+                print(f"[server] WARNING duplicate tick {tick}")
+            elif tick < last_tick:
+                print(f"[server] WARNING out-of-order tick {tick} < {last_tick}")
+            elif tick > last_tick + 1:
+                print(f"[server] WARNING gap: jumped {last_tick} -> {tick}")
+            last_tick = max(last_tick, tick)
 
-            command = decide(state)
+            command = controller.step(state)  # echoes time/tick
             jsonschema.validate(command, COMMAND_SCHEMA)
             await ws.send(json.dumps(command))
     except websockets.ConnectionClosed:
         print("[server] Unity disconnected")
 
 
-async def main():
-    print(f"[server] listening on ws://{HOST}:{PORT}")
-    async with websockets.serve(handle, HOST, PORT, max_size=2 ** 22):
+async def main_async(args):
+    network = load_network(args.network, args.scenario)
+    controller = CentralController(network)
+    print(f"[server] network '{network.name or args.scenario}' "
+          f"with {len(network.all_lane_ids())} lanes")
+    print(f"[server] listening on ws://{args.host}:{args.port}")
+
+    async def _handler(ws):
+        await handle(ws, controller)
+
+    async with websockets.serve(_handler, args.host, args.port, max_size=2 ** 22):
         await asyncio.Future()  # run forever
 
 
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(description="Central V2X control server")
+    p.add_argument("--network", default=None, help="lane-network JSON export")
+    p.add_argument("--scenario", default="highway_straight",
+                   help="synthetic network name when --network is omitted")
+    p.add_argument("--host", default=HOST)
+    p.add_argument("--port", type=int, default=PORT)
+    return p.parse_args(argv)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main_async(parse_args()))

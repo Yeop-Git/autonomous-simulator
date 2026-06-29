@@ -30,6 +30,10 @@ class World(Protocol):
         """Ordered centerline waypoints for a lane."""
         ...
 
+    def nearest_lane(self, position: Vec3) -> str | None:
+        """Lane whose centerline passes closest to ``position`` (or None)."""
+        ...
+
     def is_blocked(self, position: Vec3) -> bool:
         """Whether a world position is currently obstructed."""
         ...

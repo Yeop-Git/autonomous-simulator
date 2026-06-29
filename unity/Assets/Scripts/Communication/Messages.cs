@@ -3,8 +3,10 @@ using System.Collections.Generic;
 
 // Wire-format mirrors shared/protocol/*.schema.json.
 // If you change a schema, change this file too (and the Python side).
-// JsonUtility is used for (de)serialization, so fields must be plain and
-// match the JSON keys exactly. Vec3 is sent as float[3] = [x, y, z].
+// Serialized with Newtonsoft.Json (V2XClient) — NOT JsonUtility, which cannot
+// handle the jagged arrays (List<float[]> path / vec3 lists) in this format.
+// Field names match the JSON keys exactly; vec3 is float[3] = [x, y, z].
+// Defaults are schema-safe so a freshly-constructed message always validates.
 
 namespace V2X.Protocol
 {
@@ -13,7 +15,7 @@ namespace V2X.Protocol
     {
         public float time;
         public int tick;
-        public string scenario;            // "highway" | "urban" | "lka_test"
+        public string scenario = "highway"; // "highway" | "urban" | "lka_test"
         public List<VehicleState> vehicles = new();
         public List<MovingObject> objects = new();
         public List<WorldEvent> events = new();
@@ -24,13 +26,15 @@ namespace V2X.Protocol
     {
         public string id;
         public string type = "car";
-        public float[] position;           // [x, y, z]
-        public float[] velocity;           // [x, y, z]
-        public float[] acceleration;       // [x, y, z]
+        public float[] position = new float[3];     // [x, y, z]
+        public float[] velocity = new float[3];     // [x, y, z]
+        public float[] acceleration = new float[3]; // [x, y, z]
         public float heading;              // yaw degrees, 0=+Z, CW
-        public string current_lane;
-        public string target_lane;
-        public string behavior_state;
+        public string current_lane = "";   // required string; never null on the wire
+        public string target_lane;         // nullable per schema
+        public bool has_goal;              // true => server should route to `goal`
+        public float[] goal = new float[3];// destination [x,y,z], meaningful iff has_goal
+        public string behavior_state = "LaneKeeping";
     }
 
     [Serializable]
@@ -38,8 +42,8 @@ namespace V2X.Protocol
     {
         public string id;
         public string type;                // pedestrian | bicycle | ...
-        public float[] position;
-        public float[] velocity;
+        public float[] position = new float[3]; // required vec3 — never null on the wire
+        public float[] velocity = new float[3];
         public float radius = 0.4f;
     }
 

@@ -55,6 +55,15 @@
         },
         "current_lane": { "type": "string" },
         "target_lane": { "type": ["string", "null"] },
+        "has_goal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this vehicle has a destination the server should route to. Lets Unity (JsonUtility) always emit a fixed-shape message."
+        },
+        "goal": {
+          "$ref": "#/definitions/vec3",
+          "description": "Destination in world coords. Only meaningful when has_goal is true."
+        },
         "behavior_state": {
           "type": "string",
           "enum": [
