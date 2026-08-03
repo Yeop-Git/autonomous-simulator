@@ -227,6 +227,7 @@ class DynamicVehicle:
     type: str = "car"
     acceleration: Vec3 = field(default_factory=lambda: [0.0, 0.0, 0.0])
     target_lane: Optional[str] = None
+    maneuver: str = "straight"
     behavior_state: Optional[str] = None
     has_goal: bool = False
     goal: Optional[Vec3] = None
@@ -279,6 +280,7 @@ class WorldModel:
                 type=v.get("type", "car"),
                 acceleration=list(v.get("acceleration", [0.0, 0.0, 0.0])),
                 target_lane=v.get("target_lane"),
+                maneuver=v.get("maneuver", "straight"),
                 behavior_state=v.get("behavior_state"),
                 has_goal=bool(v.get("has_goal", False)),
                 goal=list(v["goal"]) if v.get("goal") is not None else None,

@@ -32,6 +32,7 @@ namespace V2X.Protocol
         public float heading;              // yaw degrees, 0=+Z, CW
         public string current_lane = "";   // required string; never null on the wire
         public string target_lane;         // nullable per schema
+        public string maneuver = "straight";
         public bool has_goal;              // true => server should route to `goal`
         public float[] goal = new float[3];// destination [x,y,z], meaningful iff has_goal
         public string behavior_state = "LaneKeeping";

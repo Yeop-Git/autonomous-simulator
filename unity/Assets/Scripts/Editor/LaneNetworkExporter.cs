@@ -36,20 +36,31 @@ namespace V2X.EditorTools
         [MenuItem("V2X/Export Lane Network...")]
         public static void Export()
         {
-            var lanes = Object.FindObjectsByType<Lane>(FindObjectsSortMode.None);
-            if (lanes == null || lanes.Length == 0)
-            {
-                EditorUtility.DisplayDialog("Export Lane Network",
-                    "No Lane components found in the open scene.", "OK");
-                return;
-            }
-
             string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-            string scenario = GuessScenario(scene);
-
             string path = EditorUtility.SaveFilePanel(
                 "Export Lane Network", DefaultDir(), $"{scene}_lanes.json", "json");
             if (string.IsNullOrEmpty(path)) return;
+
+            try
+            {
+                ExportTo(path);
+                EditorUtility.RevealInFinder(path);
+            }
+            catch (System.InvalidOperationException e)
+            {
+                EditorUtility.DisplayDialog("Export Lane Network", e.Message, "OK");
+            }
+        }
+
+        /// <summary>Non-interactive export entry point for MCP/editor automation.</summary>
+        public static string ExportTo(string path)
+        {
+            var lanes = Object.FindObjectsByType<Lane>(FindObjectsSortMode.None);
+            if (lanes == null || lanes.Length == 0)
+                throw new System.InvalidOperationException("No Lane components found in the open scene.");
+
+            string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            string scenario = GuessScenario(scene);
 
             var net = new NetworkDto { name = scene, scenario = scenario };
             foreach (var lane in lanes)
@@ -69,9 +80,17 @@ namespace V2X.EditorTools
                 net.lanes.Add(dto);
             }
 
+            string directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
             File.WriteAllText(path, JsonConvert.SerializeObject(net, Formatting.Indented));
             Debug.Log($"[LaneNetworkExporter] wrote {net.lanes.Count} lanes to {path}");
-            EditorUtility.RevealInFinder(path);
+            return path;
+        }
+
+        public static string ExportToDefaultLocation()
+        {
+            string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            return ExportTo(Path.Combine(DefaultDir(), $"{scene}_lanes.json"));
         }
 
         private static string GuessScenario(string scene)

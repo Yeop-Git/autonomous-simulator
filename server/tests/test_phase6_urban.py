@@ -4,6 +4,7 @@ import math
 import pytest
 
 from headless_sim import HeadlessSim
+from central_control import CentralController
 from intersection import IntersectionManager
 from traffic import GREEN, RED, YELLOW, TrafficLight, TrafficLightManager
 from world_model import DynamicVehicle, Lane, LaneNetwork
@@ -50,6 +51,98 @@ def test_yellow_stops_only_if_stoppable():
     assert mgr.should_stop([0, 0, 80], speed=5, light_id="l", t=11.0)
     # fast + close => can't stop comfortably => proceed
     assert not mgr.should_stop([0, 0, 98], speed=20, light_id="l", t=11.0)
+
+
+def test_signal_priority_prevents_crossing_deadlock():
+    north = Lane("urban_north", [[-1.8, 0, -70], [-1.8, 0, 70]])
+    east = Lane("urban_east", [[-70, 0, 1.8], [70, 0, 1.8]])
+    controller = CentralController(LaneNetwork(
+        [north, east], scenario="urban"))
+
+    def vehicle(vid, pos, velocity, lane, goal, heading):
+        return {
+            "id": vid, "type": "car", "position": pos,
+            "velocity": velocity, "acceleration": [0, 0, 0],
+            "heading": heading, "current_lane": lane, "target_lane": None,
+            "has_goal": True, "goal": goal, "behavior_state": "LaneKeeping",
+        }
+    state = {
+        "time": 0.0, "tick": 1, "scenario": "urban",
+        "vehicles": [
+            vehicle("north", [-1.8, 0, -20], [0, 0, 10],
+                    "urban_north", [-1.8, 0, 60], 0),
+            vehicle("east", [-20, 0, 1.8], [10, 0, 0],
+                    "urban_east", [60, 0, 1.8], 90),
+        ],
+        "objects": [], "events": [],
+    }
+    commands = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}
+    assert commands["north"]["target_speed"] > 0
+    assert commands["north"]["behavior"] != "EmergencyBraking"
+    assert 0 < commands["east"]["target_speed"] < 13.9
+    assert commands["east"]["behavior"] == "WaitingAtIntersection"
+
+
+def test_protected_left_phase_holds_oncoming_traffic():
+    left = Lane("urban_nb_1_in", [[1.8, 0, -70], [1.8, 0, -11]])
+    south = Lane("urban_sb_0_in", [[-5.4, 0, 70], [-5.4, 0, 11]])
+    controller = CentralController(LaneNetwork([left, south], scenario="urban"))
+
+    def state_vehicle(vid, pos, velocity, lane, heading):
+        return {
+            "id": vid, "type": "car", "position": pos,
+            "velocity": velocity, "acceleration": [0, 0, 0],
+            "heading": heading, "current_lane": lane, "target_lane": None,
+            "has_goal": False, "goal": pos, "behavior_state": "LaneKeeping",
+        }
+    state = {
+        "time": 36.0, "tick": 1, "scenario": "urban",
+        "vehicles": [
+            state_vehicle("left", [1.8, 0, -20], [0, 0, 8], "urban_nb_1_in", 0),
+            state_vehicle("oncoming", [-5.4, 0, 20], [0, 0, -8], "urban_sb_0_in", 180),
+        ],
+        "objects": [], "events": [],
+    }
+    commands = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}
+    assert commands["left"]["target_speed"] > 0
+    assert commands["left"]["behavior"] != "EmergencyBraking"
+    assert 0 < commands["oncoming"]["target_speed"] < 13.9
+    assert commands["oncoming"]["behavior"] == "WaitingAtIntersection"
+
+
+def test_real_urban_cycle_starts_with_perpendicular_traffic_green():
+    controller = CentralController(LaneNetwork([
+        Lane("urban_nb_0_in", [[5.4, 0, -70], [5.4, 0, -11]]),
+        Lane("urban_eb_0_in", [[-70, 0, -5.4], [-11, 0, -5.4]]),
+    ], scenario="urban"))
+    assert controller.traffic.state("urban_eb_0_in", 0.0) == "Green"
+    assert controller.traffic.state("urban_nb_0_in", 0.0) == "Red"
+    assert controller.traffic.lights["urban_nb_0_in"].stop_line[2] == -16.0
+
+
+def test_red_signal_approach_speed_stops_before_painted_line():
+    lane = Lane("urban_nb_0_in", [[5.4, 0, -70], [5.4, 0, -11]])
+    controller = CentralController(LaneNetwork([lane], scenario="urban"))
+
+    def command_at(z):
+        state = {
+            "time": 5.0, "tick": 1, "scenario": "urban",
+            "vehicles": [{
+                "id": "ego", "type": "car", "position": [5.4, 0, z],
+                "velocity": [0, 0, 10], "acceleration": [0, 0, 0],
+                "heading": 0, "current_lane": "urban_nb_0_in",
+                "target_lane": None, "has_goal": False,
+                "goal": [5.4, 0, 60], "behavior_state": "LaneKeeping",
+            }],
+            "objects": [], "events": [],
+        }
+        return controller.step(state)["commands"][0]
+
+    approaching = command_at(-30.0)
+    at_line_buffer = command_at(-17.0)
+    assert 0.0 < approaching["target_speed"] < 13.9
+    assert at_line_buffer["target_speed"] == 0.0
+    assert at_line_buffer["behavior"] == "WaitingAtIntersection"
 
 
 # ---- intersection reservation -------------------------------------------- #

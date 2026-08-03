@@ -27,6 +27,8 @@ namespace V2X.Sim
 
         private readonly Dictionary<string, VehicleController> _byId = new();
 
+        private void Awake() => Application.runInBackground = true;
+
         private void Start()
         {
             if (road == null) road = FindFirstObjectByType<RoadNetworkManager>();
@@ -51,7 +53,7 @@ namespace V2X.Sim
                 if (v == null) continue;
                 if (road != null)
                 {
-                    string lane = road.NearestLaneId(v.transform.position);
+                    string lane = road.NearestLaneId(v.transform.position, v.HeadingDeg);
                     if (lane != null) v.CurrentLaneId = lane;
                 }
                 Vector3 pos = v.transform.position;
@@ -66,7 +68,8 @@ namespace V2X.Sim
                     acceleration = new[] { 0f, 0f, 0f },
                     heading = v.HeadingDeg,
                     current_lane = v.CurrentLaneId,
-                    target_lane = null,
+                    target_lane = v.RequestedTargetLane,
+                    maneuver = v.maneuver,
                     has_goal = v.HasGoal,
                     goal = new[] { g.x, g.y, g.z },
                     behavior_state = v.Behavior,
@@ -95,8 +98,25 @@ namespace V2X.Sim
         {
             if (command?.commands == null) return;
             foreach (var cmd in command.commands)
-                if (cmd != null && _byId.TryGetValue(cmd.vehicle_id, out var v))
+                if (cmd != null && _byId.TryGetValue(cmd.vehicle_id, out var v) && v != null)
                     v.ApplyCommand(cmd);
+        }
+
+        public void RegisterObject(DynamicObjectAgent agent)
+        {
+            if (agent != null && !objects.Contains(agent)) objects.Add(agent);
+        }
+
+        public void UnregisterObject(DynamicObjectAgent agent)
+        {
+            if (agent != null) objects.Remove(agent);
+        }
+
+        public void UnregisterVehicle(VehicleController vehicle)
+        {
+            if (vehicle == null) return;
+            vehicles.Remove(vehicle);
+            _byId.Remove(vehicle.Id);
         }
     }
 }

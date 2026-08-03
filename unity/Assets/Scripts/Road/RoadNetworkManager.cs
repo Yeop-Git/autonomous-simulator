@@ -45,5 +45,22 @@ namespace V2X.Road
             var lane = NearestLane(position);
             return lane != null ? lane.Id : null;
         }
+
+        public string NearestLaneId(Vector3 position, float headingDeg)
+        {
+            Lane best = null;
+            float bestScore = float.MaxValue;
+            foreach (var lane in lanes)
+            {
+                if (lane == null) continue;
+                lane.ClosestPoint(position, out float lateral, out float arc);
+                float delta = Mathf.Abs(Mathf.DeltaAngle(headingDeg, lane.HeadingAtArc(arc)));
+                // A wrong-way overlapping connector is much worse than a
+                // slightly farther lane aligned with the vehicle.
+                float score = lateral + delta / 30f;
+                if (score < bestScore) { bestScore = score; best = lane; }
+            }
+            return best != null ? best.Id : null;
+        }
     }
 }

@@ -87,6 +87,27 @@ namespace V2X.Road
             return len;
         }
 
+        public float HeadingAtArc(float targetArc)
+        {
+            var cl = Centerline();
+            float acc = 0f;
+            for (int i = 0; i < cl.Count - 1; i++)
+            {
+                Vector3 d = cl[i + 1] - cl[i];
+                d.y = 0f;
+                float len = d.magnitude;
+                if (len > 1e-4f && targetArc <= acc + len)
+                    return Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+                acc += len;
+            }
+            if (cl.Count >= 2)
+            {
+                Vector3 d = cl[^1] - cl[^2];
+                return Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+            }
+            return 0f;
+        }
+
         private void OnDrawGizmos()
         {
             var cl = Centerline();

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using V2X.Protocol;
+using V2X.Sim;
 
 // Kinematic bicycle-model vehicle. Holds identity + goal, applies the latest
 // CommandMessage from the server (target speed, path, behaviour, LKA flag),
@@ -19,6 +20,8 @@ namespace V2X.Vehicle
         [Tooltip("Optional destination. If set, has_goal=true in the state message.")]
         public Transform goal;
         public string type = "car";
+        [Tooltip("straight | left | right")]
+        public string maneuver = "straight";
 
         [Header("Kinematics")]
         public float maxSpeed = 30f;        // m/s ceiling
@@ -30,6 +33,8 @@ namespace V2X.Vehicle
         public LateralLaw lateralLaw = LateralLaw.PurePursuit;
         public float lookaheadBase = 4f;
         public float lookaheadK = 0.4f;
+        public bool destroyOnArrival = true;
+        public float arrivalDestroyDelay = 1f;
 
         // runtime state
         public float CurrentSpeed { get; private set; }
@@ -38,11 +43,13 @@ namespace V2X.Vehicle
         public bool LkaEnabled { get; private set; } = true;
         public float LateralError => _lka.LastLateralError;
         public float HeadingError => _lka.LastHeadingError;
+        public string RequestedTargetLane { get; private set; }
 
         private readonly List<Vector3> _path = new();
         private float _targetSpeed;
         private bool _hasCommand;
         private readonly LKAController _lka = new();
+        private float _arrivedTime;
 
         public string Id => string.IsNullOrEmpty(vehicleId) ? name : vehicleId;
         public bool HasGoal => goal != null;
@@ -51,6 +58,14 @@ namespace V2X.Vehicle
         public float HeadingDeg => transform.eulerAngles.y;
         public IReadOnlyList<Vector3> Path => _path;
 
+        public void RequestTargetLane(string laneId)
+        {
+            if (!string.IsNullOrEmpty(laneId) && laneId != CurrentLaneId)
+                RequestedTargetLane = laneId;
+        }
+
+        public void ClearTargetLaneRequest() => RequestedTargetLane = null;
+
         // Apply one server command (called by SimulationManager / ICommandSink).
         public void ApplyCommand(VehicleCommand cmd)
         {
@@ -58,6 +73,9 @@ namespace V2X.Vehicle
             _targetSpeed = Mathf.Min(cmd.target_speed, maxSpeed);
             Behavior = string.IsNullOrEmpty(cmd.behavior) ? Behavior : cmd.behavior;
             LkaEnabled = cmd.lka_enabled;
+            if (!string.IsNullOrEmpty(RequestedTargetLane)
+                && RequestedTargetLane == CurrentLaneId)
+                RequestedTargetLane = null;
             if (cmd.path != null && cmd.path.Count > 0)
             {
                 _path.Clear();
@@ -73,6 +91,19 @@ namespace V2X.Vehicle
         {
             float dt = Time.fixedDeltaTime;
             if (!_hasCommand) return;
+
+            if (destroyOnArrival && Behavior == "Arrived" && CurrentSpeed < .05f)
+            {
+                _arrivedTime += Time.fixedDeltaTime;
+                if (_arrivedTime >= arrivalDestroyDelay)
+                {
+                    FindFirstObjectByType<SimulationManager>()?.UnregisterVehicle(this);
+                    if (goal != null) Destroy(goal.gameObject);
+                    Destroy(gameObject);
+                    return;
+                }
+            }
+            else _arrivedTime = 0f;
 
             // --- longitudinal: track target speed under accel/decel limits ---
             float dv = _targetSpeed - CurrentSpeed;

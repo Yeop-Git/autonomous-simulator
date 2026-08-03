@@ -18,7 +18,9 @@ Vec3 = Sequence[float]
 
 DEFAULT_HORIZON = 4.0       # s  (plan: 3–5 s)
 DEFAULT_DT = 0.2            # s  (plan: 0.1–0.2 s)
-DEFAULT_SAFETY_DISTANCE = 5.0  # m, center-to-center
+# A passenger car in Unity is 1.8 m wide.  2.5 m preserves a useful margin
+# without falsely classifying vehicles in adjacent 3.5/3.6 m lanes as colliding.
+DEFAULT_SAFETY_DISTANCE = 2.5  # m, center-to-center
 
 
 class HasMotion(Protocol):

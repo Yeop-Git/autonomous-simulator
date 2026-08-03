@@ -55,6 +55,11 @@
         },
         "current_lane": { "type": "string" },
         "target_lane": { "type": ["string", "null"] },
+        "maneuver": {
+          "type": "string",
+          "enum": ["straight", "left", "right"],
+          "default": "straight"
+        },
         "has_goal": {
           "type": "boolean",
           "default": false,

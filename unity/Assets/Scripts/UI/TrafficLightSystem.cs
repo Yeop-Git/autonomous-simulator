@@ -1,0 +1,126 @@
+using System;
+using UnityEngine;
+using V2X.Vehicle;
+
+namespace V2X.UI
+{
+    public enum SignalState { Green, Yellow, Red }
+
+    [Serializable]
+    public class TrafficSignalHead
+    {
+        public string label;
+        public float offset;
+        public Renderer red;
+        public Renderer yellow;
+        public Renderer[] left;
+        public Renderer green;
+    }
+
+    /// <summary>Fixed-cycle signal visualization synchronized with simulation time.</summary>
+    public class TrafficLightSystem : MonoBehaviour
+    {
+        public TrafficSignalHead[] heads;
+        public float greenTime = 12f;
+        public float yellowTime = 3f;
+        public float redTime = 31f;
+        public VehicleController focusVehicle;
+
+        // The perpendicular east-west approaches receive the initial green.
+        public SignalState EastWestState => WindowState(Time.fixedTime, 0f, 10f, 3f);
+        public SignalState NorthSouthState => WindowState(Time.fixedTime, 21f, 10f, 3f);
+        public SignalState ProtectedLeftState => WindowState(Time.fixedTime, 35f, 6f, 2f);
+        public bool PedestriansMayCross
+        {
+            get
+            {
+                float t = Mathf.Repeat(Time.fixedTime, 54f);
+                return (t >= 13f && t < 21f) || (t >= 43f && t < 51f);
+            }
+        }
+
+        private void Update()
+        {
+            if (heads == null) return;
+            foreach (var head in heads)
+            {
+                if (head == null) continue;
+                SignalState state = head.label.StartsWith("LEFT")
+                    ? ProtectedLeftState
+                    : head.label.StartsWith("EW") ? EastWestState : NorthSouthState;
+                SetBulb(head.red, Color.red, state == SignalState.Red);
+                SetBulb(head.yellow, Color.yellow, state == SignalState.Yellow);
+                bool leftActive = head.label.StartsWith("NS")
+                    && ProtectedLeftState == SignalState.Green;
+                SetBulbs(head.left, new Color(.15f, 1f, .45f), leftActive);
+                SetBulb(head.green, Color.green, state == SignalState.Green);
+            }
+        }
+
+        private static void SetBulbs(Renderer[] renderers, Color color, bool active)
+        {
+            if (renderers == null) return;
+            foreach (var renderer in renderers) SetBulb(renderer, color, active);
+        }
+
+        private static SignalState WindowState(float time, float start, float green, float yellow)
+        {
+            float phase = Mathf.Repeat(time - start, 54f);
+            if (phase < green) return SignalState.Green;
+            if (phase < green + yellow) return SignalState.Yellow;
+            return SignalState.Red;
+        }
+
+        private static void SetBulb(Renderer renderer, Color color, bool active)
+        {
+            if (renderer == null) return;
+            renderer.material.color = active ? color : color * 0.12f;
+            if (!renderer.material.HasProperty("_EmissionColor")) return;
+            renderer.material.EnableKeyword("_EMISSION");
+            renderer.material.SetColor("_EmissionColor", active ? color * 2f : Color.black);
+        }
+
+        private void OnGUI()
+        {
+            var title = new GUIStyle(GUI.skin.box)
+            {
+                fontSize = 18,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                richText = true
+            };
+            string ns = ColorText("남북", NorthSouthState);
+            string ew = ColorText("동서", EastWestState);
+            string left = ColorText("보호좌회전", ProtectedLeftState);
+            var view = FindFirstObjectByType<CameraViewController>();
+            if (view != null && view.ActiveView == 2)
+            {
+                string walk = PedestriansMayCross
+                    ? "<color=#5de8ff>보행 GREEN</color>"
+                    : "<color=#ff5a5a>보행 RED</color>";
+                GUI.Box(new Rect(Screen.width * .5f - 270f, 10f, 540f, 72f),
+                    $"교차로 종합  {ns} | {left} | {ew}\n{walk}", title);
+                return;
+            }
+            GUI.Box(new Rect(Screen.width * .5f - 125f, 10f, 250f, 54f),
+                "전방 신호  " + ColorText("", FacingState()), title);
+        }
+
+        private SignalState FacingState()
+        {
+            string lane = focusVehicle != null ? focusVehicle.CurrentLaneId ?? "" : "";
+            if (focusVehicle != null && focusVehicle.maneuver == "left")
+                return ProtectedLeftState;
+            if (lane.Contains("_eb_") || lane.Contains("_wb_"))
+                return EastWestState;
+            return NorthSouthState;
+        }
+
+        private static string ColorText(string label, SignalState state)
+        {
+            string color = state == SignalState.Green ? "#38ff68" :
+                state == SignalState.Yellow ? "#ffe33d" : "#ff4a4a";
+            return $"<color={color}>{label} {state}</color>";
+        }
+    }
+}

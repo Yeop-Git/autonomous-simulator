@@ -29,6 +29,10 @@ def dist_xz(a: Vec3, b: Vec3) -> float:
     return math.hypot(a[0] - b[0], a[2] - b[2])
 
 
+def polyline_length(points: list[Vec3]) -> float:
+    return sum(dist_xz(points[i], points[i + 1]) for i in range(len(points) - 1))
+
+
 def bounds(start: Vec3, goal: Vec3, margin: float):
     minx = min(start[0], goal[0]) - margin
     maxx = max(start[0], goal[0]) + margin

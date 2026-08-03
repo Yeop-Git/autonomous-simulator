@@ -17,9 +17,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(H)` human task
 - [x] VehicleController.cs (kinematic bicycle + Pure Pursuit/Stanley)
 - [x] world_model.py lane graph (matches World protocol)
 - [x] lane-data export format Unity → Python (`lane_network.schema.json` + `Editor/LaneNetworkExporter.cs`)
-- [ ] (H) author one-lane scene + place waypoints  ← see docs/unity_setup.md §4
+- [x] author one-lane scene + place waypoints — `Assets/Scenes/Main.unity`
 - [ ] (H) tune vehicle motion feel
-- [ ] **GATE:** car drives authored lane smoothly
+- [x] **GATE:** car drives authored lane smoothly (live Unity↔Python run)
 
 ## Phase 2 — A* server + comms (VERTICAL SLICE)
 - [x] astar.py implemented + unit-tested on synthetic graph
@@ -27,16 +27,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(H)` human task
 - [x] apply returned path to vehicle (VehicleController.ApplyCommand)
 - [x] route-request flow (`has_goal`/`goal`) + route visualization (PathVisualizer)
 - [x] sync hardening (tick echo, stale/out-of-order/gap/dup warnings)
-- [ ] (H) editor wiring + route viz  ← see docs/unity_setup.md §4.4
+- [x] editor wiring + route viz — generated and live-validated in `Main.unity`
 - [ ] (H) timestep-sync debugging if drift appears
-- [~] **GATE:** proven in-process + live via fake client; needs Unity scene to close
+- [x] **GATE:** Unity→server→A*→Unity live vertical slice proven
 
 ## Phase 3 — Multi-vehicle + collision prediction
 - [x] central routing of N cars (CentralController) + headless_sim test bed
 - [x] collision_predictor.py (TTC / closest-approach, horizon 3–5s)
 - [x] following behavior (ACC + safe-speed) + FSM states (behavior.py)
 - [x] conflict-resolution (emergency/stop/follow via FSM + ACC)
-- [ ] (H) multi-spawn scene
+- [x] multi-spawn scene — `Assets/Scenes/Highway.unity`
 - [x] **GATE (logic):** 6-car train + slow-leader + obstacle = zero collisions (headless tests)
 
 ## Phase 4 — LKA / ADAS test track
@@ -46,7 +46,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(H)` human task
 - [x] CSV logging (frozen schema) (`logging_csv.py`, wired into headless sim)
 - [x] noise modes (Full / Noisy / Local) (`noise.py`, wired into controller)
 - [x] tuning harness (`experiments/run_lka_test.py` sweep 40/60/80/100)
-- [ ] (H) straight + curved test tracks  ← Unity scene
+- [x] straight + curved test tracks — `Main.unity` + `LKA_Test.unity`
 - [ ] (H) controller gain tuning
 - [x] **GATE (headless):** lateral_error + departures logged at 40/60/80/100 (CSV out)
 
@@ -56,7 +56,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(H)` human task
 - [x] hazard events (falling object) + obstacle/replan (`world_model` events→obstacle)
 - [x] emergency-vehicle yielding (`emergency.py`, wired into controller)
 - [x] highway metrics (plan §6.4) (`metrics.py`)
-- [ ] (H) highway map (mainline + ramp)  ← Unity scene
+- [x] highway map (three-lane mainline + ramp) — `Assets/Scenes/Highway.unity`
 - [x] **GATE (logic):** lane change + merge + hazard-stop covered by tests
 
 ## Phase 6 — Urban scenarios
@@ -65,14 +65,14 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(H)` human task
 - [x] pedestrian predicted-trajectory yield/stop (generic collision prediction)
 - [x] hazard/stopped-vehicle handling via events→obstacle + A* reroute
 - [x] urban metrics (plan §7.4) (`metrics.py`, shared)
-- [ ] (H) urban map (intersections/crosswalks/ped paths)  ← Unity scene
+- [x] urban map (intersection/crosswalks/pedestrian) — `Assets/Scenes/Urban.unity`
 - [x] **GATE (logic):** light cycle + reservation + pedestrian-stop covered by tests
 
-## Phase 7 — Algorithm comparison + report  (NOT STARTED — only sampling core stub)
-- [~] rrt.py / rrt_star.py (same planner interface) — `planners/_rrt_common.py` foundation only
-- [ ] experiment runners (plan §20) + multi-seed variance
-- [ ] CSV logging across experiments
-- [ ] analysis.ipynb charts (plan §21.3)
-- [ ] docs/experiment_results.md
-- [ ] (H) run experiment matrix + review
-- [ ] **GATE:** comparison charts + results doc from logged CSVs
+## Phase 7 — Algorithm comparison + report
+- [x] rrt.py / rrt_star.py (same planner interface) — `planners/rrt.py`, `planners/rrt_star.py` (+ `_rrt_common.py`); unit-tested in `tests/test_rrt.py`
+- [x] experiment runner (plan §20.1) + multi-seed variance — `experiments/run_algorithm_compare.py` (5 seeds × {1,5,20} vehicles × 3 scenarios)
+- [x] CSV logging across experiments — `results/algo_compare_{raw,summary}.csv` (+ existing LKA §20.2 logs)
+- [x] analysis.ipynb charts (plan §21.3) — `experiments/analysis.ipynb` (+ headless `experiments/make_charts.py` → `results/charts/*.png`)
+- [x] docs/experiment_results.md — findings for §20.1 (A*/RRT/RRT*) and §20.2 (LKA)
+- [ ] (H) run experiment matrix on Unity scenes for §20.3–20.5 (merge/intersection/hazard) — logic done, needs scenes
+- [x] **GATE:** comparison charts + results doc produced from logged CSVs (A*/RRT/RRT* + LKA)

@@ -4,6 +4,19 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
-  m_configObjects: {}
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/Main.unity
+    guid: 195c771ef2c0ca944953cab5b3546a51
+  - enabled: 1
+    path: Assets/Scenes/LKA_Test.unity
+    guid: fb07a174c762eee48ac0ab5522bcb747
+  - enabled: 1
+    path: Assets/Scenes/Highway.unity
+    guid: 556efab54767fc141aee30a82b368673
+  - enabled: 1
+    path: Assets/Scenes/Urban.unity
+    guid: 494e635c075014b41b89b56ab27af3a7
+  m_configObjects:
+    com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}
   m_UseUCBPForAssetBundles: 0

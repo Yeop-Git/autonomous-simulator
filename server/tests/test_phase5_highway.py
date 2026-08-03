@@ -6,6 +6,7 @@ import pytest
 import lane_change
 import merge
 import metrics
+from central_control import CentralController
 from headless_sim import HeadlessSim
 from scenarios import networks
 from world_model import DynamicVehicle, Lane, LaneNetwork
@@ -41,6 +42,52 @@ def test_lane_change_far_traffic_accepted():
     behind = veh("behind", [3.5, 0, 5], [0, 0, 20], "hw_l1_a")  # 45 m behind, slower
     d = lane_change.evaluate(ego, "hw_l1_a", [ahead, behind], net)
     assert d.accept
+
+
+def test_central_controller_applies_requested_safe_lane_change():
+    net = networks.highway_straight(lanes=2, length=300.0)
+    controller = CentralController(net)
+    state = {
+        "time": 1.0, "tick": 1, "scenario": "highway",
+        "vehicles": [{
+            "id": "ego", "type": "car", "position": [0, 0, 40],
+            "velocity": [0, 0, 20], "acceleration": [0, 0, 0],
+            "heading": 0, "current_lane": "hw_l0_a",
+            "target_lane": "hw_l1_a", "has_goal": True,
+            "goal": [3.5, 0, 280], "behavior_state": "LaneKeeping",
+        }],
+        "objects": [], "events": [],
+    }
+    cmd = controller.step(state)["commands"][0]
+    assert cmd["target_lane"] == "hw_l1_a"
+    assert cmd["behavior"] == "LaneChanging"
+    assert len(cmd["path"]) >= 5
+    assert cmd["path"][1][0] > cmd["path"][0][0]
+
+
+def test_central_controller_rejects_unsafe_lane_change_request():
+    net = networks.highway_straight(lanes=2, length=300.0)
+    controller = CentralController(net)
+    def vehicle(vid, x, z, lane, target=None):
+        return {
+            "id": vid, "type": "car", "position": [x, 0, z],
+            "velocity": [0, 0, 20], "acceleration": [0, 0, 0],
+            "heading": 0, "current_lane": lane, "target_lane": target,
+            "has_goal": True, "goal": [x, 0, 280],
+            "behavior_state": "LaneKeeping",
+        }
+    state = {
+        "time": 1.0, "tick": 1, "scenario": "highway",
+        "vehicles": [
+            vehicle("ego", 0, 40, "hw_l0_a", "hw_l1_a"),
+            vehicle("beside", 3.5, 41, "hw_l1_a"),
+        ],
+        "objects": [], "events": [],
+    }
+    cmd = next(c for c in controller.step(state)["commands"]
+               if c["vehicle_id"] == "ego")
+    assert cmd["target_lane"] == "hw_l0_a"
+    assert cmd["behavior"] != "LaneChanging"
 
 
 # ---- merge reservation --------------------------------------------------- #

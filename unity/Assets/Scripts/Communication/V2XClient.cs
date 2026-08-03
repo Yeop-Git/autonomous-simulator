@@ -86,17 +86,29 @@ namespace V2X.Communication
         private async Task Connect()
         {
             _cts = new CancellationTokenSource();
-            _socket = new ClientWebSocket();
-            try
+            const int attempts = 20;
+            for (int attempt = 1; attempt <= attempts && !_cts.IsCancellationRequested; attempt++)
             {
-                await _socket.ConnectAsync(new Uri(serverUrl), _cts.Token);
-                _connected = true;
-                Debug.Log($"[V2XClient] connected to {serverUrl}");
-                _ = ReceiveLoop();
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[V2XClient] connect failed: {e.Message}");
+                _socket?.Dispose();
+                _socket = new ClientWebSocket();
+                try
+                {
+                    await _socket.ConnectAsync(new Uri(serverUrl), _cts.Token);
+                    _connected = true;
+                    Debug.Log($"[V2XClient] connected to {serverUrl}");
+                    _ = ReceiveLoop();
+                    return;
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception e)
+                {
+                    if (attempt == attempts)
+                    {
+                        Debug.LogError($"[V2XClient] connect failed after {attempts} attempts: {e.Message}");
+                        return;
+                    }
+                    await Task.Delay(250, _cts.Token);
+                }
             }
         }
 
