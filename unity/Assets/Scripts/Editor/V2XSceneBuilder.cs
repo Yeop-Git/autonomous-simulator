@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.Events;
 using Unity.Cinemachine;
 using Unity.Cinemachine.TargetTracking;
 using UnityEngine;
@@ -177,6 +178,205 @@ namespace V2X.EditorTools
             camera.transform.LookAt(new Vector3(0f, 0f, 110f));
             camera.fieldOfView = 55f;
             Save("Highway");
+        }
+
+        [MenuItem("V2X/Build Emergency Avoidance Lab")]
+        public static void BuildEmergencyAvoidanceScene()
+        {
+            EnsureDirectories();
+            NewScene("EmergencyAvoidance", out var camera);
+
+            const float zEnd = 330f;
+            CreateCube("Emergency Lab Asphalt", new Vector3(1.75f, -.1f, zEnd * .5f),
+                new Vector3(17f, .2f, zEnd + 20f), new Color(.025f, .032f, .045f));
+            CreateCube("Left Landscape", new Vector3(-25f, -.22f, zEnd * .5f),
+                new Vector3(32f, .25f, zEnd + 30f), new Color(.055f, .12f, .075f));
+            CreateCube("Right Landscape", new Vector3(28f, -.22f, zEnd * .5f),
+                new Vector3(37f, .25f, zEnd + 30f), new Color(.055f, .12f, .075f));
+
+            var lanes = new List<Lane>();
+            string[] ids = { "ea_left", "ea_center", "ea_right", "ea_shoulder" };
+            float[] xs = { -3.5f, 0f, 3.5f, 7f };
+            for (int i = 0; i < ids.Length; i++)
+            {
+                var lane = CreateLane(ids[i], i == 3 ? 7f : 22f,
+                    Points(new Vector3(xs[i], 0f, 0f), new Vector3(xs[i], 0f, zEnd), 23));
+                lane.width = i == 3 ? 3.2f : 3.5f;
+                lanes.Add(lane);
+                if (i < 2) CreateDashedLine(xs[i] + 1.75f, 0f, zEnd);
+            }
+            CreateSolidLineZ("Shoulder Boundary", 5.25f, 0f, zEnd,
+                new Color(1f, .82f, .18f), .2f);
+            CreateSolidLineZ("Left Road Edge", -5.35f, 0f, zEnd, Color.white, .18f);
+            CreateSolidLineZ("Right Shoulder Edge", 8.65f, 0f, zEnd, Color.white, .18f);
+            for (int i = 0; i < lanes.Count; i++)
+            {
+                lanes[i].leftLane = i > 0 ? lanes[i - 1] : null;
+                lanes[i].rightLane = i < lanes.Count - 1 ? lanes[i + 1] : null;
+            }
+
+            CreateEmergencyLabEnvironment(zEnd);
+            var ego = CreateVehicle("avoidance_ego", new Vector3(0f, .5f, 12f),
+                new Vector3(0f, 0f, 315f), new Color(.04f, .9f, 1f));
+            ego.maxSpeed = 24f;
+            ego.maxAccel = 2.8f;
+            ego.maxDecel = 7.5f;
+            ego.destroyOnArrival = false;
+            ego.destroyOutsideBoundary = false;
+            ego.showRetryOnExit = false;
+
+            WireSimulation("emergency_avoidance", lanes, new[] { ego },
+                Array.Empty<DynamicObjectAgent>());
+            var runtime = GameObject.Find("V2X Runtime");
+            var sim = runtime.GetComponent<SimulationManager>();
+            sim.plannerMode = "rrt";
+            runtime.GetComponent<DebugDashboard>().show = false;
+            var scenario = runtime.AddComponent<EmergencyAvoidanceScenarioController>();
+            scenario.simulation = sim;
+            scenario.ego = ego;
+            scenario.policePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Pack_FREE_Cars/Prefabs/Police.prefab");
+            scenario.automaticDemo = true;
+            var labDashboard = runtime.AddComponent<EmergencyAvoidanceDashboard>();
+            labDashboard.ego = ego;
+            labDashboard.simulation = sim;
+            labDashboard.scenario = scenario;
+            labDashboard.client = runtime.GetComponent<V2XClient>();
+
+            var canvas = CreateCameraSystem(camera, ego, false,
+                new Vector3(62f, 92f, 62f), new Vector3(1.5f, 0f, 145f));
+            CreateEmergencyLabControls(canvas.transform, scenario);
+            ego.showRetryOnExit = false;
+            camera.transform.position = new Vector3(23f, 28f, -28f);
+            camera.transform.LookAt(new Vector3(1.5f, 1.2f, 58f));
+            camera.fieldOfView = 56f;
+
+            Save("EmergencyAvoidance");
+            AddSceneToBuildSettings($"{SceneDir}/EmergencyAvoidance.unity");
+            AssetDatabase.SaveAssets();
+            Debug.Log("[V2XSceneBuilder] Built EmergencyAvoidance RRT/RRT* lab.");
+        }
+
+        [MenuItem("V2X/Build Integrated 10-Minute City")]
+        public static void BuildIntegratedCityScene()
+        {
+            EnsureDirectories();
+            string source = $"{SceneDir}/Urban.unity";
+            string destination = $"{SceneDir}/IntegratedCity.unity";
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(source) == null)
+                throw new InvalidOperationException("Build the Urban scene before the integrated city.");
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(destination) != null)
+                AssetDatabase.DeleteAsset(destination);
+            if (!AssetDatabase.CopyAsset(source, destination))
+                throw new InvalidOperationException("Failed to copy Urban.unity.");
+
+            EditorSceneManager.OpenScene(destination, OpenSceneMode.Single);
+            var road = UnityEngine.Object.FindFirstObjectByType<RoadNetworkManager>();
+            var simulation = UnityEngine.Object.FindFirstObjectByType<SimulationManager>();
+            var ego = GameObject.Find("urban_ego")?.GetComponent<VehicleController>();
+            if (road == null || simulation == null || ego == null)
+                throw new InvalidOperationException("Urban base scene is missing its road, simulation, or ego.");
+
+            var nbOut = GameObject.Find("urban_nb_0_out")?.GetComponent<Lane>();
+            var nbIn = GameObject.Find("urban_nb_0_in")?.GetComponent<Lane>();
+            if (nbOut == null || nbIn == null)
+                throw new InvalidOperationException("Urban northbound route is incomplete.");
+
+            var boulevardPoints = Points(new Vector3(5.4f, 0f, 70f), new Vector3(5.4f, 0f, 360f), 25);
+            var escapePoints = Points(new Vector3(9f, 0f, 70f), new Vector3(9f, 0f, 360f), 25);
+            var turnEastPoints = BezierPoints(new Vector3(5.4f, 0f, 360f),
+                new Vector3(5.4f, 0f, 430f), new Vector3(80f, 0f, 430f), 18);
+            var turnSouthPoints = BezierPoints(new Vector3(80f, 0f, 430f),
+                new Vector3(115f, 0f, 430f), new Vector3(115f, 0f, 395f), 14);
+            var southPoints = Points(new Vector3(115f, 0f, 395f), new Vector3(115f, 0f, -160f), 35);
+            var turnWestPoints = BezierPoints(new Vector3(115f, 0f, -160f),
+                new Vector3(115f, 0f, -200f), new Vector3(75f, 0f, -200f), 14);
+            var westPoints = Points(new Vector3(75f, 0f, -200f), new Vector3(45f, 0f, -200f), 5);
+            var turnNorthPoints = BezierPoints(new Vector3(45f, 0f, -200f),
+                new Vector3(5.4f, 0f, -200f), new Vector3(5.4f, 0f, -160f), 14);
+            var returnPoints = Points(new Vector3(5.4f, 0f, -160f), new Vector3(5.4f, 0f, -70f), 10);
+
+            var boulevard = CreateLane("city_boulevard_main", 20f, boulevardPoints);
+            var escape = CreateLane("city_boulevard_escape", 8f, escapePoints);
+            var turnEast = CreateLane("city_turn_east", 12f, turnEastPoints);
+            var turnSouth = CreateLane("city_turn_south", 12f, turnSouthPoints);
+            var south = CreateLane("city_south", 18f, southPoints);
+            var turnWest = CreateLane("city_turn_west", 12f, turnWestPoints);
+            var west = CreateLane("city_west", 14f, westPoints);
+            var turnNorth = CreateLane("city_turn_north", 12f, turnNorthPoints);
+            var cityReturn = CreateLane("city_return", 16f, returnPoints);
+            boulevard.rightLane = escape;
+            escape.leftLane = boulevard;
+            nbOut.nextLanes.Add(boulevard);
+            boulevard.nextLanes.Add(turnEast);
+            escape.nextLanes.Add(turnEast);
+            turnEast.nextLanes.Add(turnSouth);
+            turnSouth.nextLanes.Add(south);
+            south.nextLanes.Add(turnWest);
+            turnWest.nextLanes.Add(west);
+            west.nextLanes.Add(turnNorth);
+            turnNorth.nextLanes.Add(cityReturn);
+            cityReturn.nextLanes.Add(nbIn);
+            road.lanes.AddRange(new[] { boulevard, escape, turnEast, turnSouth, south,
+                turnWest, west, turnNorth, cityReturn });
+
+            CreateIntegratedCityEnvironment(boulevardPoints, turnEastPoints, turnSouthPoints,
+                southPoints, turnWestPoints, westPoints, turnNorthPoints, returnPoints);
+
+            simulation.scenario = "integrated_city";
+            simulation.plannerMode = "rrt";
+            simulation.vehicles = new List<VehicleController>(
+                UnityEngine.Object.FindObjectsByType<VehicleController>(FindObjectsSortMode.None));
+            ego.destroyOnArrival = false;
+            ego.destroyOutsideBoundary = false;
+            ego.showRetryOnExit = false;
+            ego.maxSpeed = 22f;
+            ego.maneuver = "straight";
+
+            var strategy = UnityEngine.Object.FindFirstObjectByType<UrbanDrivingStrategyController>();
+            if (strategy != null) strategy.enabled = false;
+            var retry = UnityEngine.Object.FindFirstObjectByType<RetryPanelController>();
+            if (retry != null && retry.panel != null) retry.panel.SetActive(false);
+            var debug = simulation.GetComponent<DebugDashboard>();
+            if (debug != null) debug.show = false;
+
+            var eventController = simulation.gameObject.AddComponent<EmergencyAvoidanceScenarioController>();
+            eventController.simulation = simulation;
+            eventController.ego = ego;
+            eventController.scenarioName = "integrated_city";
+            eventController.automaticDemo = false;
+            eventController.obstacleDistance = 44f;
+            eventController.emergencySpawnDistance = 38f;
+            eventController.policePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Pack_FREE_Cars/Prefabs/Police.prefab");
+
+            Transform northCheckpoint = CreateCheckpoint("Outer Loop Checkpoint",
+                new Vector3(115f, 0f, 20f));
+            Transform southCheckpoint = CreateCheckpoint("Urban Return Checkpoint",
+                new Vector3(5.4f, 0f, -145f));
+            var director = simulation.gameObject.AddComponent<IntegratedCityScenarioDirector>();
+            director.simulation = simulation;
+            director.ego = ego;
+            director.events = eventController;
+            director.northCheckpoint = northCheckpoint;
+            director.southCheckpoint = southCheckpoint;
+            director.showcaseDuration = 600f;
+
+            var integratedDashboard = simulation.gameObject.AddComponent<IntegratedCityDashboard>();
+            integratedDashboard.ego = ego;
+            integratedDashboard.simulation = simulation;
+            integratedDashboard.director = director;
+            integratedDashboard.client = simulation.GetComponent<V2XClient>();
+
+            var overview = GameObject.Find("CM Overview");
+            var overviewTarget = GameObject.Find("CM Overview Look Target");
+            if (overview != null) overview.transform.position = new Vector3(245f, 340f, -90f);
+            if (overviewTarget != null) overviewTarget.transform.position = new Vector3(48f, 0f, 105f);
+
+            Save("IntegratedCity");
+            AddSceneToBuildSettings(destination);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[V2XSceneBuilder] Built IntegratedCity 10-minute showcase.");
         }
 
         [MenuItem("V2X/Build Urban Scene")]
@@ -526,6 +726,238 @@ namespace V2X.EditorTools
                 segment.transform.rotation = Quaternion.LookRotation((b - a).normalized, Vector3.up);
                 segment.transform.SetParent(root.transform);
             }
+        }
+
+        private static void CreateEmergencyLabEnvironment(float zEnd)
+        {
+            var barrierColor = new Color(.48f, .53f, .61f);
+            for (float z = 5f; z <= zEnd; z += 10f)
+            {
+                CreateCube("Left Guardrail", new Vector3(-6.25f, .42f, z),
+                    new Vector3(.18f, .55f, 9.5f), barrierColor);
+                CreateCube("Right Guardrail", new Vector3(9.55f, .42f, z),
+                    new Vector3(.18f, .55f, 9.5f), barrierColor);
+            }
+            for (float z = 18f; z <= zEnd; z += 34f)
+            {
+                foreach (float x in new[] { -8.3f, 11.6f })
+                {
+                    CreateCube("Smart Road Pole", new Vector3(x, 3.6f, z),
+                        new Vector3(.18f, 7.2f, .18f), new Color(.25f, .3f, .36f));
+                    var lamp = CreateCube("LED Road Lamp", new Vector3(x, 7.15f, z),
+                        new Vector3(.8f, .18f, .35f), new Color(.55f, .85f, 1f));
+                    var light = lamp.AddComponent<Light>();
+                    light.type = LightType.Point;
+                    light.color = new Color(.55f, .8f, 1f);
+                    light.range = 20f;
+                    light.intensity = 2.5f;
+                }
+            }
+
+            foreach (float z in new[] { 72f, 185f, 286f })
+            {
+                var root = new GameObject($"V2X Gantry {z:000}");
+                CreateLabGantryPart(root.transform, "Left Post", new Vector3(-6f, 3.6f, 0f),
+                    new Vector3(.32f, 7.2f, .32f));
+                CreateLabGantryPart(root.transform, "Right Post", new Vector3(9.3f, 3.6f, 0f),
+                    new Vector3(.32f, 7.2f, .32f));
+                CreateLabGantryPart(root.transform, "Beam", new Vector3(1.65f, 7f, 0f),
+                    new Vector3(15.6f, .35f, .35f));
+                var sign = CreateCube("V2X Detection Sign", new Vector3(1.65f, 6.25f, -.05f),
+                    new Vector3(5.8f, 1.25f, .22f), new Color(.025f, .22f, .34f));
+                sign.transform.SetParent(root.transform, false);
+                var label = new GameObject("Sign Label");
+                label.transform.SetParent(root.transform, false);
+                label.transform.localPosition = new Vector3(1.65f, 6.2f, -.18f);
+                label.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                var text = label.AddComponent<TextMesh>();
+                text.text = z < 100f ? "V2X HAZARD LAB" : z < 220f ? "RRT ESCAPE ZONE" : "SAFE REJOIN";
+                text.fontSize = 46;
+                text.characterSize = .12f;
+                text.anchor = TextAnchor.MiddleCenter;
+                text.color = new Color(.55f, .95f, 1f);
+                root.transform.position = new Vector3(0f, 0f, z);
+            }
+
+            for (int i = 0; i < 7; i++)
+            {
+                float z = 42f + i * 34f;
+                var sensor = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                sensor.name = "V2X Roadside Sensor";
+                sensor.transform.position = new Vector3(10.3f, 1.35f, z);
+                sensor.transform.localScale = Vector3.one * .42f;
+                ApplyMaterial(sensor, new Color(.15f, .9f, 1f));
+            }
+        }
+
+        private static void CreateIntegratedCityEnvironment(
+            IReadOnlyList<Vector3> boulevard, IReadOnlyList<Vector3> turnEast,
+            IReadOnlyList<Vector3> turnSouth, IReadOnlyList<Vector3> south,
+            IReadOnlyList<Vector3> turnWest, IReadOnlyList<Vector3> west,
+            IReadOnlyList<Vector3> turnNorth, IReadOnlyList<Vector3> cityReturn)
+        {
+            var ground = CreateCube("Integrated Metro Ground", new Vector3(45f, -.32f, 110f),
+                new Vector3(310f, .35f, 700f), new Color(.055f, .085f, .075f));
+            ground.transform.SetAsFirstSibling();
+            Color asphalt = new Color(.025f, .032f, .043f);
+            CreateCube("V2X Boulevard Asphalt", new Vector3(7.2f, -.1f, 215f),
+                new Vector3(11.2f, .2f, 290f), asphalt);
+            CreateRoadRibbon("Outer Turn East", turnEast, 10f, asphalt);
+            CreateRoadRibbon("Outer Turn South", turnSouth, 10f, asphalt);
+            CreateRoadRibbon("South Smart Avenue", south, 10f, asphalt);
+            CreateRoadRibbon("Outer Turn West", turnWest, 10f, asphalt);
+            CreateRoadRibbon("West Connector", west, 10f, asphalt);
+            CreateRoadRibbon("Outer Turn North", turnNorth, 10f, asphalt);
+            CreateRoadRibbon("Urban Return Avenue", cityReturn, 10f, asphalt);
+
+            CreateDashedLine(7.2f, 70f, 360f);
+            CreateSolidLineZ("Boulevard Left Edge", 3.5f, 70f, 360f, Color.white, .16f);
+            CreateSolidLineZ("Boulevard Shoulder Edge", 10.8f, 70f, 360f,
+                new Color(1f, .78f, .08f), .18f);
+            foreach (var route in new[] { turnEast, turnSouth, south, turnWest, west, turnNorth, cityReturn })
+                CreatePolylineEdges("Outer Loop Edge", route, 4.65f, Color.white);
+
+            Color concrete = new Color(.22f, .27f, .31f);
+            for (float z = 82f; z < 355f; z += 12f)
+            {
+                CreateCube("Boulevard Left Barrier", new Vector3(2.2f, .35f, z),
+                    new Vector3(.22f, .6f, 11.5f), concrete);
+                CreateCube("Boulevard Right Barrier", new Vector3(11.9f, .35f, z),
+                    new Vector3(.22f, .6f, 11.5f), concrete);
+            }
+
+            for (int i = 0; i < 14; i++)
+            {
+                float z = 92f + i * 23f;
+                CreateCityLamp(new Vector3(-.2f, 0f, z), i % 3 == 0);
+                CreateCityLamp(new Vector3(14.2f, 0f, z), false);
+            }
+            for (int i = 0; i < 13; i++)
+                CreateCityLamp(new Vector3(121.5f, 0f, 365f - i * 42f), i % 4 == 0);
+
+            foreach (float z in new[] { 130f, 235f, 335f })
+                CreateIntegratedGantry(new Vector3(7.2f, 0f, z),
+                    z < 200f ? "CENTRAL V2X GRID" : z < 300f ? "RRT EVENT ZONE" : "SMART CITY LOOP");
+
+            Color[] facades =
+            {
+                new Color(.10f, .19f, .27f), new Color(.18f, .14f, .25f),
+                new Color(.13f, .23f, .20f), new Color(.24f, .18f, .13f),
+            };
+            for (int i = 0; i < 13; i++)
+            {
+                float z = 92f + i * 25f;
+                CreateCityBuilding(new Vector3(-24f - (i % 2) * 10f, 0f, z),
+                    new Vector3(18f, 16f + (i % 5) * 6f, 16f), facades[i % facades.Length], i);
+                CreateCityBuilding(new Vector3(38f + (i % 3) * 11f, 0f, z + 8f),
+                    new Vector3(17f, 20f + (i % 4) * 8f, 18f), facades[(i + 1) % facades.Length], i + 20);
+            }
+            for (int i = 0; i < 11; i++)
+            {
+                float z = 365f - i * 48f;
+                CreateCityBuilding(new Vector3(145f + (i % 2) * 13f, 0f, z),
+                    new Vector3(22f, 24f + (i % 5) * 7f, 25f), facades[(i + 2) % facades.Length], i + 40);
+            }
+
+            var park = CreateCube("Mobility Park", new Vector3(63f, -.08f, 334f),
+                new Vector3(70f, .12f, 75f), new Color(.045f, .2f, .095f));
+            for (int i = 0; i < 18; i++)
+            {
+                float x = 34f + (i % 6) * 10f;
+                float z = 310f + (i / 6) * 18f;
+                var trunk = CreateCube("Park Tree Trunk", new Vector3(x, 1.2f, z),
+                    new Vector3(.45f, 2.4f, .45f), new Color(.25f, .14f, .07f));
+                var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                crown.name = "Park Tree Crown";
+                crown.transform.position = new Vector3(x, 3.2f, z);
+                crown.transform.localScale = new Vector3(3.6f, 4f, 3.6f);
+                ApplyMaterial(crown, new Color(.08f, .38f, .16f));
+            }
+        }
+
+        private static void CreateCityLamp(Vector3 basePosition, bool connectedLight)
+        {
+            CreateCube("Smart City Lamp Pole", basePosition + Vector3.up * 3.5f,
+                new Vector3(.16f, 7f, .16f), new Color(.24f, .3f, .36f));
+            var head = CreateCube("Smart City LED", basePosition + Vector3.up * 7f,
+                new Vector3(.75f, .16f, .32f), new Color(.48f, .82f, 1f));
+            if (connectedLight)
+            {
+                var light = head.AddComponent<Light>();
+                light.type = LightType.Point;
+                light.color = new Color(.48f, .75f, 1f);
+                light.range = 24f;
+                light.intensity = 2.3f;
+            }
+        }
+
+        private static void CreateIntegratedGantry(Vector3 position, string caption)
+        {
+            var root = new GameObject($"Integrated V2X Gantry {caption}");
+            root.transform.position = position;
+            CreateLabGantryPart(root.transform, "Left Post", new Vector3(-5.2f, 3.6f, 0f),
+                new Vector3(.3f, 7.2f, .3f));
+            CreateLabGantryPart(root.transform, "Right Post", new Vector3(5.2f, 3.6f, 0f),
+                new Vector3(.3f, 7.2f, .3f));
+            CreateLabGantryPart(root.transform, "Beam", new Vector3(0f, 7f, 0f),
+                new Vector3(10.7f, .32f, .32f));
+            var sign = CreateCube("Connected Mobility Sign", new Vector3(0f, 6.25f, 0f),
+                new Vector3(6.4f, 1.2f, .2f), new Color(.02f, .18f, .31f));
+            sign.transform.SetParent(root.transform, false);
+            var label = new GameObject("Gantry Caption");
+            label.transform.SetParent(root.transform, false);
+            label.transform.localPosition = new Vector3(0f, 6.25f, -.15f);
+            label.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            var text = label.AddComponent<TextMesh>();
+            text.text = caption;
+            text.fontSize = 40;
+            text.characterSize = .1f;
+            text.anchor = TextAnchor.MiddleCenter;
+            text.color = new Color(.55f, .95f, 1f);
+        }
+
+        private static void CreateCityBuilding(Vector3 basePosition, Vector3 size,
+            Color facade, int seed)
+        {
+            var root = new GameObject($"Connected Building {seed:00}");
+            var tower = CreateCube("Tower", basePosition + Vector3.up * (size.y * .5f), size, facade);
+            tower.transform.SetParent(root.transform);
+            var crown = CreateCube("Illuminated Crown", basePosition + Vector3.up * (size.y + .45f),
+                new Vector3(size.x * .82f, .75f, size.z * .82f), new Color(.12f, .6f, .78f));
+            crown.transform.SetParent(root.transform);
+            for (int floor = 3; floor < size.y - 2f; floor += 4)
+            {
+                var windows = CreateCube("Window Band", basePosition + new Vector3(0f, floor, -size.z * .505f),
+                    new Vector3(size.x * .78f, .42f, .08f), new Color(.55f, .78f, .86f));
+                windows.transform.SetParent(root.transform);
+            }
+        }
+
+        private static Transform CreateCheckpoint(string name, Vector3 position)
+        {
+            var checkpoint = new GameObject(name);
+            checkpoint.transform.position = position;
+            return checkpoint.transform;
+        }
+
+        private static void CreateLabGantryPart(Transform parent, string name,
+            Vector3 localPosition, Vector3 scale)
+        {
+            var part = CreateCube(name, localPosition, scale, new Color(.28f, .33f, .4f));
+            part.transform.SetParent(parent, false);
+        }
+
+        private static void CreateEmergencyLabControls(
+            Transform canvas, EmergencyAvoidanceScenarioController scenario)
+        {
+            var obstacle = CreateButton(canvas, "4  낙하물 발생", new Vector2(-285f, 105f), 170f);
+            var emergency = CreateButton(canvas, "5  긴급차 출동", new Vector2(-95f, 105f), 170f);
+            var planner = CreateButton(canvas, "6  RRT / RRT*", new Vector2(95f, 105f), 170f);
+            var reset = CreateButton(canvas, "0  실험 재시작", new Vector2(285f, 105f), 170f);
+            UnityEventTools.AddPersistentListener(obstacle.onClick, scenario.SpawnObstacle);
+            UnityEventTools.AddPersistentListener(emergency.onClick, scenario.DispatchEmergencyVehicle);
+            UnityEventTools.AddPersistentListener(planner.onClick, scenario.TogglePlanner);
+            UnityEventTools.AddPersistentListener(reset.onClick, scenario.ResetScenario);
         }
 
         private static void CreateLaneMarkers(float x, float z0, float z1)
@@ -1060,6 +1492,14 @@ namespace V2X.EditorTools
             if (!EditorSceneManager.SaveScene(SceneManager.GetActiveScene(), $"{SceneDir}/{sceneName}.unity"))
                 throw new InvalidOperationException($"Failed to save scene {sceneName}");
             LaneNetworkExporter.ExportToDefaultLocation();
+        }
+
+        private static void AddSceneToBuildSettings(string path)
+        {
+            var scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
+            if (scenes.Exists(scene => scene.path == path)) return;
+            scenes.Add(new EditorBuildSettingsScene(path, true));
+            EditorBuildSettings.scenes = scenes.ToArray();
         }
     }
 }

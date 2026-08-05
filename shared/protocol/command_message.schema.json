@@ -41,7 +41,9 @@
           "enum": [
             "LaneKeeping", "Following", "LaneChanging",
             "Stopping", "EmergencyBraking", "WaitingAtIntersection",
-            "LeftTurnAborted", "Arrived"
+            "LeftTurnAborted", "Arrived", "HazardDetected",
+            "EscapePlanning", "LateralEvading", "Yielding",
+            "RejoinPlanning", "LaneRejoining", "ControlledStopping"
           ]
         },
         "left_turn_phase": {
@@ -56,6 +58,13 @@
           "type": "string",
           "enum": ["none", "left", "right", "hazard"]
         },
+        "planner": {
+          "type": "string",
+          "enum": ["astar", "rrt", "rrt_star"]
+        },
+        "plan_status": { "type": "string" },
+        "planning_time_ms": { "type": "number", "minimum": 0 },
+        "minimum_clearance": { "type": "number" },
         "path": {
           "type": "array",
           "items": { "$ref": "#/definitions/vec3" },

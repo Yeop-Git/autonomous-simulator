@@ -20,6 +20,7 @@ from typing import Optional
 import emergency
 import lane_change
 import left_turn
+from local_avoidance import LocalAvoidanceManager
 import merge
 from traffic import TrafficLight, TrafficLightManager
 from behavior import (ARRIVED, EMERGENCY_BRAKING, STOPPING, BehaviorInputs,
@@ -105,8 +106,9 @@ class CentralController:
         self._right_turn_stopped: set[str] = set()
         self._left_turn_commitments: dict[str, left_turn.LeftTurnCommitment] = {}
         self._left_turn_contexts: dict[str, _LeftTurnContext] = {}
+        self.local_avoidance = LocalAvoidanceManager()
         self.traffic = TrafficLightManager()
-        if network.scenario == "urban":
+        if network.scenario in ("urban", "integrated_city"):
             # Legacy two-lane ids remain supported for synthetic tests.
             self.traffic.add(TrafficLight(
                 "urban_north", stop_line=[-1.8, 0.0, -10.0],
@@ -414,6 +416,25 @@ class CentralController:
             speed = min(speed, yld)
             if behavior == "LaneKeeping":
                 cmd["behavior"] = "Stopping"  # visibly yielding
+
+        # --- RRT/RRT* local avoidance and active emergency pull-over ---- #
+        # Only active in dedicated scenarios.  It overrides the local path
+        # after ordinary routing/traffic decisions but never defeats an
+        # already-required emergency brake.
+        avoidance = self.local_avoidance.update(v, self.world)
+        if avoidance is not None:
+            if avoidance.path:
+                cmd["path"] = avoidance.path
+            if avoidance.target_lane:
+                cmd["target_lane"] = avoidance.target_lane
+            cmd["planner"] = avoidance.planner
+            cmd["plan_status"] = avoidance.plan_status
+            cmd["planning_time_ms"] = avoidance.planning_time_ms
+            cmd["minimum_clearance"] = avoidance.minimum_clearance
+            cmd["turn_signal"] = avoidance.turn_signal
+            if behavior != EMERGENCY_BRAKING:
+                cmd["behavior"] = avoidance.behavior
+                speed = avoidance.target_speed
         cmd["target_speed"] = round(speed, 3)
         return cmd
 

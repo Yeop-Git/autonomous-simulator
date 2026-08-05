@@ -19,11 +19,13 @@ namespace V2X.Visualization
         private RoadNetworkManager _road;
         private readonly List<LineRenderer> _possibleLines = new();
         private string _possibleCacheKey;
+        private Color _activeColor;
 
         private void Awake()
         {
             _confirmedLine = GetComponent<LineRenderer>();
             ConfigureLine(_confirmedLine, .3f, color, false);
+            _activeColor = color;
             if (vehicle == null) vehicle = GetComponent<VehicleController>();
             _road = FindFirstObjectByType<RoadNetworkManager>();
         }
@@ -43,9 +45,32 @@ namespace V2X.Visualization
             }
 
             var path = vehicle.Path;
+            Color desired = ConfirmedColor();
+            if (desired != _activeColor)
+            {
+                _activeColor = desired;
+                _confirmedLine.startColor = _confirmedLine.endColor = desired;
+                if (_confirmedLine.material != null) _confirmedLine.material.color = desired;
+            }
             _confirmedLine.positionCount = path.Count;
             for (int i = 0; i < path.Count; i++)
                 _confirmedLine.SetPosition(i, path[i] + Vector3.up * yOffset);
+        }
+
+        private Color ConfirmedColor()
+        {
+            if (vehicle == null) return color;
+            if (vehicle.Behavior == "ControlledStopping" ||
+                vehicle.Behavior == "EmergencyBraking")
+                return new Color(1f, .18f, .12f, 1f);
+            if (vehicle.Behavior == "Yielding")
+                return new Color(1f, .72f, .12f, 1f);
+            return vehicle.Planner switch
+            {
+                "rrt" => new Color(.05f, .95f, 1f, 1f),
+                "rrt_star" => new Color(1f, .2f, .9f, 1f),
+                _ => color,
+            };
         }
 
         private void DrawPossibleRoutes()

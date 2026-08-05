@@ -288,6 +288,7 @@ class WorldModel:
         self.time: float = 0.0
         self.tick: int = -1
         self.scenario: str = network.scenario
+        self.planner_mode: str = "rrt"
         self.vehicles: dict[str, DynamicVehicle] = {}
         self.objects: dict[str, DynamicObject] = {}
         self.events: list[dict] = []
@@ -298,6 +299,8 @@ class WorldModel:
         self.tick = state.get("tick", self.tick)
         if state.get("scenario"):
             self.scenario = state["scenario"]
+        if state.get("planner_mode") in ("rrt", "rrt_star"):
+            self.planner_mode = state["planner_mode"]
 
         self.vehicles = {}
         for v in state.get("vehicles", []):

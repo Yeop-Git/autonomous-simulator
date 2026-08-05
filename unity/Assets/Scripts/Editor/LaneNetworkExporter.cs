@@ -96,6 +96,10 @@ namespace V2X.EditorTools
         private static string GuessScenario(string scene)
         {
             string s = scene.ToLowerInvariant();
+            if (s.Contains("emergency") || s.Contains("avoidance"))
+                return "emergency_avoidance";
+            if (s.Contains("integrated") || s.Contains("mega"))
+                return "integrated_city";
             if (s.Contains("urban") || s.Contains("city")) return "urban";
             if (s.Contains("lka") || s.Contains("test")) return "lka_test";
             return "highway";

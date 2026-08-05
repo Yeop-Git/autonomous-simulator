@@ -17,8 +17,10 @@ namespace V2X.Sim
 {
     public class SimulationManager : MonoBehaviour, IWorldStateProvider, ICommandSink
     {
-        [Tooltip("highway | urban | lka_test")]
+        [Tooltip("highway | urban | lka_test | emergency_avoidance | integrated_city")]
         public string scenario = "highway";
+        [Tooltip("rrt | rrt_star (used by sampling-planner experiment scenes)")]
+        public string plannerMode = "rrt";
         public RoadNetworkManager road;
 
         [Tooltip("Leave empty to auto-collect from the scene at Start.")]
@@ -46,7 +48,11 @@ namespace V2X.Sim
         // ---- IWorldStateProvider ---------------------------------------- //
         public StateMessage CollectState(int tick, float time)
         {
-            var msg = new StateMessage { time = time, tick = tick, scenario = scenario };
+            var msg = new StateMessage
+            {
+                time = time, tick = tick, scenario = scenario,
+                planner_mode = plannerMode,
+            };
 
             foreach (var v in vehicles)
             {

@@ -16,8 +16,14 @@
     },
     "scenario": {
       "type": "string",
-      "enum": ["highway", "urban", "lka_test"],
+      "enum": ["highway", "urban", "lka_test", "emergency_avoidance", "integrated_city"],
       "description": "Active scenario, lets the server pick the right policy."
+    },
+    "planner_mode": {
+      "type": "string",
+      "enum": ["rrt", "rrt_star"],
+      "default": "rrt",
+      "description": "Sampling planner selected by the active experiment scene."
     },
     "vehicles": {
       "type": "array",
@@ -74,7 +80,10 @@
           "enum": [
             "Idle", "RoutePlanning", "LaneKeeping", "Following",
             "LaneChanging", "Stopping", "WaitingAtIntersection",
-            "EmergencyBraking", "Replanning", "Arrived"
+            "EmergencyBraking", "Replanning", "LeftTurnAborted", "Arrived",
+            "HazardDetected", "EscapePlanning", "LateralEvading",
+            "Yielding", "RejoinPlanning", "LaneRejoining",
+            "ControlledStopping"
           ]
         }
       }

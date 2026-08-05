@@ -51,6 +51,11 @@ namespace V2X.Vehicle
         public string Behavior { get; private set; } = "LaneKeeping";
         public string LeftTurnPhase { get; private set; }
         public string TurnSignal { get; private set; } = "none";
+        public string Planner { get; private set; } = "astar";
+        public string PlanStatus { get; private set; } = "idle";
+        public float PlanningTimeMs { get; private set; }
+        public float MinimumClearance { get; private set; }
+        public float TargetSpeed => _targetSpeed;
         public bool ManeuverSelectionPending { get; private set; }
         public bool LkaEnabled { get; private set; } = true;
         public float LateralError => _lka.LastLateralError;
@@ -106,6 +111,10 @@ namespace V2X.Vehicle
             Behavior = string.IsNullOrEmpty(cmd.behavior) ? Behavior : cmd.behavior;
             LeftTurnPhase = cmd.left_turn_phase;
             TurnSignal = string.IsNullOrEmpty(cmd.turn_signal) ? "none" : cmd.turn_signal;
+            Planner = string.IsNullOrEmpty(cmd.planner) ? "astar" : cmd.planner;
+            PlanStatus = string.IsNullOrEmpty(cmd.plan_status) ? "idle" : cmd.plan_status;
+            PlanningTimeMs = cmd.planning_time_ms;
+            MinimumClearance = cmd.minimum_clearance;
             if (!string.IsNullOrEmpty(cmd.left_turn_phase) &&
                 cmd.left_turn_phase != _lastLoggedLeftPhase)
             {

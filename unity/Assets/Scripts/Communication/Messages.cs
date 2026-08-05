@@ -16,6 +16,7 @@ namespace V2X.Protocol
         public float time;
         public int tick;
         public string scenario = "highway"; // "highway" | "urban" | "lka_test"
+        public string planner_mode = "rrt";
         public List<VehicleState> vehicles = new();
         public List<MovingObject> objects = new();
         public List<WorldEvent> events = new();
@@ -73,6 +74,10 @@ namespace V2X.Protocol
         public string behavior;
         public string left_turn_phase;
         public string turn_signal = "none";
+        public string planner = "astar";
+        public string plan_status = "idle";
+        public float planning_time_ms;
+        public float minimum_clearance;
         public List<float[]> path = new();
         public bool lka_enabled = true;
     }
