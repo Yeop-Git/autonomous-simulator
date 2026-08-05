@@ -40,8 +40,21 @@
           "type": "string",
           "enum": [
             "LaneKeeping", "Following", "LaneChanging",
-            "Stopping", "EmergencyBraking", "WaitingAtIntersection", "Arrived"
+            "Stopping", "EmergencyBraking", "WaitingAtIntersection",
+            "LeftTurnAborted", "Arrived"
           ]
+        },
+        "left_turn_phase": {
+          "type": "string",
+          "enum": [
+            "LaneChangeWaiting", "LaneChanging", "ApproachStopLine",
+            "SignalWaiting", "IntersectionEntry", "IntersectionCrossing",
+            "ExitAligning", "AbortedStraight", "Completed"
+          ]
+        },
+        "turn_signal": {
+          "type": "string",
+          "enum": ["none", "left", "right", "hazard"]
         },
         "path": {
           "type": "array",

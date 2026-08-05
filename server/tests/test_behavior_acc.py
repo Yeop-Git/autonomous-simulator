@@ -7,7 +7,7 @@ from behavior import (ARRIVED, EMERGENCY_BRAKING, FOLLOWING, LANE_KEEPING,
                       STOPPING, BehaviorInputs, Leader, find_leader, next_behavior)
 from controllers.acc import ACCController, ACCParams
 from scenarios import networks
-from world_model import DynamicVehicle
+from world_model import DynamicVehicle, Lane, LaneNetwork
 
 
 def veh(vid, z, vz=10.0, lane="hw_l0_a"):
@@ -42,9 +42,22 @@ def test_acc_emergency_decel_when_inside_standstill_gap():
     acc = ACCController(ACCParams(standstill_gap=4.0))
     out = acc.target_speed(ego_speed=20.0, free_speed=25.0,
                            leader_gap=1.0, leader_speed=0.0, dt=0.1)
-    # bounded by emergency decel
-    assert out >= 20.0 - acc.p.emergency_decel * 0.1 - 1e-9
-    assert out < 20.0
+    # Command a full stop; Unity applies its physical deceleration limit.
+    assert out == 0.0
+
+
+def test_acc_settles_behind_stopped_queue_instead_of_creeping_forever():
+    acc = ACCController()
+    out = acc.target_speed(ego_speed=0.08, free_speed=13.9,
+                           leader_gap=6.4, leader_speed=0.0, dt=0.1)
+    assert out == 0.0
+
+
+def test_acc_resumes_when_stopped_queue_moves():
+    acc = ACCController()
+    out = acc.target_speed(ego_speed=0.0, free_speed=13.9,
+                           leader_gap=6.4, leader_speed=1.0, dt=0.1)
+    assert out > 0.0
 
 
 def test_acc_keeps_gap_at_steady_state():
@@ -78,6 +91,34 @@ def test_find_leader_ignores_other_lane():
 def test_find_leader_none_when_alone():
     net = networks.highway_straight(lanes=1, length=300.0)
     assert find_leader(veh("ego", 10.0), [], net) is None
+
+
+def test_find_leader_survives_stale_lane_tag_at_intersection_boundary():
+    incoming = Lane(id="in", centerline=[[0, 0, -20], [0, 0, 0]],
+                    next_lane_ids=["connector"])
+    connector = Lane(id="connector", centerline=[[0, 0, 0], [0, 0, 20]])
+    net = LaneNetwork([incoming, connector])
+    ego = DynamicVehicle(id="ego", position=[0, 0, 1], velocity=[0, 0, 3],
+                         heading=0.0, current_lane="connector")
+    leader = DynamicVehicle(id="lead", position=[0, 0, 8], velocity=[0, 0, 0],
+                            heading=0.0, current_lane="in")
+
+    result = find_leader(ego, [leader], net)
+
+    assert result is not None and result.vehicle.id == "lead"
+    assert result.gap == pytest.approx(2.5)
+
+
+def test_find_leader_corridor_fallback_ignores_cross_traffic():
+    north = Lane(id="north", centerline=[[0, 0, -20], [0, 0, 20]])
+    east = Lane(id="east", centerline=[[-20, 0, 4], [20, 0, 4]])
+    net = LaneNetwork([north, east])
+    ego = DynamicVehicle(id="ego", position=[0, 0, 0], velocity=[0, 0, 3],
+                         heading=0.0, current_lane="north")
+    crossing = DynamicVehicle(id="cross", position=[0, 0, 4], velocity=[3, 0, 0],
+                              heading=90.0, current_lane="east")
+
+    assert find_leader(ego, [crossing], net) is None
 
 
 # ---- FSM ------------------------------------------------------------------ #

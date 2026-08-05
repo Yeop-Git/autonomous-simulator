@@ -18,13 +18,15 @@ from dataclasses import dataclass
 
 @dataclass
 class ACCParams:
-    time_gap: float = 1.5          # s, desired headway to leader
-    standstill_gap: float = 4.0    # m, min bumper gap at rest
+    time_gap: float = 2.0          # s, desired headway to leader
+    standstill_gap: float = 6.0    # m, min bumper gap at rest
     max_accel: float = 2.0         # m/s^2
     max_decel: float = 4.0         # m/s^2 (comfortable)
     emergency_decel: float = 8.0   # m/s^2 (hard)
     kp_gap: float = 0.4            # gap error -> speed adjust
     kp_speed: float = 0.6          # leader speed matching
+    stopped_leader_speed: float = 0.2  # m/s, consider the queue stationary
+    stop_gap_tolerance: float = 0.5    # m, settle instead of creeping forever
 
 
 class ACCController:
@@ -64,6 +66,15 @@ class ACCController:
         if leader_gap is None or leader_speed is None:
             desired = free_speed
         else:
+            # Once the protected standstill envelope is entered the desired
+            # endpoint is a full stop.  Unity still tracks this command under
+            # its configured deceleration limit, so the vehicle stops smoothly
+            # instead of having its velocity snapped to zero.
+            if (leader_gap <= self.p.standstill_gap
+                    or (leader_speed <= self.p.stopped_leader_speed
+                        and leader_gap <= (self.p.standstill_gap
+                                           + self.p.stop_gap_tolerance))):
+                return 0.0
             # kinematic safe speed (collision-free) is the hard ceiling...
             v_safe = self.safe_speed(leader_gap, leader_speed)
             # ...the comfort time-gap term keeps a roomier following distance.

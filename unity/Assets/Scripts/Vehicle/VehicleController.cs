@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using V2X.Protocol;
 using V2X.Sim;
+using V2X.UI;
+using V2X.Visualization;
 
 // Kinematic bicycle-model vehicle. Holds identity + goal, applies the latest
 // CommandMessage from the server (target speed, path, behaviour, LKA flag),
@@ -35,11 +37,21 @@ namespace V2X.Vehicle
         public float lookaheadK = 0.4f;
         public bool destroyOnArrival = true;
         public float arrivalDestroyDelay = 1f;
+        [Tooltip("Remove through-traffic immediately after it crosses the scene exit boundary.")]
+        public bool destroyOutsideBoundary;
+        public float despawnBoundary;
+        public float throughGoalExtension = 125f;
+        public bool showRetryOnExit;
+        public RetryPanelController retryUI;
+        public float despawnFadeDuration = .75f;
 
         // runtime state
         public float CurrentSpeed { get; private set; }
         public string CurrentLaneId { get; set; }
         public string Behavior { get; private set; } = "LaneKeeping";
+        public string LeftTurnPhase { get; private set; }
+        public string TurnSignal { get; private set; } = "none";
+        public bool ManeuverSelectionPending { get; private set; }
         public bool LkaEnabled { get; private set; } = true;
         public float LateralError => _lka.LastLateralError;
         public float HeadingError => _lka.LastHeadingError;
@@ -50,6 +62,8 @@ namespace V2X.Vehicle
         private bool _hasCommand;
         private readonly LKAController _lka = new();
         private float _arrivedTime;
+        private bool _isDespawning;
+        private string _lastLoggedLeftPhase;
 
         public string Id => string.IsNullOrEmpty(vehicleId) ? name : vehicleId;
         public bool HasGoal => goal != null;
@@ -66,12 +80,40 @@ namespace V2X.Vehicle
 
         public void ClearTargetLaneRequest() => RequestedTargetLane = null;
 
+        public void SetManeuverSelectionPending(bool pending)
+        {
+            ManeuverSelectionPending = pending;
+        }
+
+        public void ConfigureThroughRoute(Vector3 exitPoint)
+        {
+            if (goal == null) return;
+            Vector3 direction = Mathf.Abs(exitPoint.x) >= Mathf.Abs(exitPoint.z)
+                ? new Vector3(Mathf.Sign(exitPoint.x), 0f, 0f)
+                : new Vector3(0f, 0f, Mathf.Sign(exitPoint.z));
+            if (direction.sqrMagnitude < .001f) return;
+
+            despawnBoundary = Mathf.Max(Mathf.Abs(exitPoint.x), Mathf.Abs(exitPoint.z));
+            destroyOutsideBoundary = true;
+            goal.position = exitPoint + direction * throughGoalExtension;
+        }
+
         // Apply one server command (called by SimulationManager / ICommandSink).
         public void ApplyCommand(VehicleCommand cmd)
         {
             _hasCommand = true;
             _targetSpeed = Mathf.Min(cmd.target_speed, maxSpeed);
             Behavior = string.IsNullOrEmpty(cmd.behavior) ? Behavior : cmd.behavior;
+            LeftTurnPhase = cmd.left_turn_phase;
+            TurnSignal = string.IsNullOrEmpty(cmd.turn_signal) ? "none" : cmd.turn_signal;
+            if (!string.IsNullOrEmpty(cmd.left_turn_phase) &&
+                cmd.left_turn_phase != _lastLoggedLeftPhase)
+            {
+                Debug.Log($"[LeftTurn] command ego={Id} phase={cmd.left_turn_phase} " +
+                          $"behavior={cmd.behavior} speed={cmd.target_speed:F2} " +
+                          $"targetLane={cmd.target_lane} pathCount={cmd.path?.Count ?? 0}");
+                _lastLoggedLeftPhase = cmd.left_turn_phase;
+            }
             LkaEnabled = cmd.lka_enabled;
             if (!string.IsNullOrEmpty(RequestedTargetLane)
                 && RequestedTargetLane == CurrentLaneId)
@@ -92,26 +134,35 @@ namespace V2X.Vehicle
             float dt = Time.fixedDeltaTime;
             if (!_hasCommand) return;
 
+            if (IsOutsideDespawnBoundary())
+            {
+                Despawn();
+                return;
+            }
+
             if (destroyOnArrival && Behavior == "Arrived" && CurrentSpeed < .05f)
             {
                 _arrivedTime += Time.fixedDeltaTime;
                 if (_arrivedTime >= arrivalDestroyDelay)
                 {
-                    FindFirstObjectByType<SimulationManager>()?.UnregisterVehicle(this);
-                    if (goal != null) Destroy(goal.gameObject);
-                    Destroy(gameObject);
+                    Despawn();
                     return;
                 }
             }
             else _arrivedTime = 0f;
 
             // --- longitudinal: track target speed under accel/decel limits ---
-            float dv = _targetSpeed - CurrentSpeed;
+            // Strategy selection is an intent override, not a driving permit.
+            // With no selection the server's ordinary lane-keeping command must
+            // continue to move the vehicle, and a later selection may take over
+            // without an artificial stop/restart cycle.
+            float effectiveTargetSpeed = _targetSpeed;
+            float dv = effectiveTargetSpeed - CurrentSpeed;
             float maxDv = (dv >= 0 ? maxAccel : maxDecel) * dt;
             CurrentSpeed = Mathf.Clamp(CurrentSpeed + Mathf.Clamp(dv, -maxDv, maxDv),
                                        0f, maxSpeed);
 
-            if (CurrentSpeed < 1e-3f && _targetSpeed <= 0f) return;
+            if (CurrentSpeed < 1e-3f && effectiveTargetSpeed <= 0f) return;
 
             // --- lateral: steer toward the commanded path -------------------
             float steer = 0f;
@@ -126,6 +177,25 @@ namespace V2X.Vehicle
                 transform.Rotate(0f, yawRate * Mathf.Rad2Deg * dt, 0f);
             }
             transform.position += transform.forward * (CurrentSpeed * dt);
+
+            if (IsOutsideDespawnBoundary()) Despawn();
+        }
+
+        private bool IsOutsideDespawnBoundary()
+        {
+            return destroyOutsideBoundary && despawnBoundary > 0f &&
+                   (Mathf.Abs(transform.position.x) >= despawnBoundary ||
+                    Mathf.Abs(transform.position.z) >= despawnBoundary);
+        }
+
+        private void Despawn()
+        {
+            if (_isDespawning) return;
+            _isDespawning = true;
+            if (showRetryOnExit) retryUI?.Show();
+            FindFirstObjectByType<SimulationManager>()?.UnregisterVehicle(this);
+            if (goal != null) Destroy(goal.gameObject);
+            DespawnFader.FadeAndDestroy(gameObject, despawnFadeDuration);
         }
 
         private void OnDrawGizmosSelected()

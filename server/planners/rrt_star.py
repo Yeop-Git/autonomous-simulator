@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 
 from . import _rrt_common as rc
 from .base import Path, Vec3, World
@@ -54,8 +55,12 @@ class RRTStarPlanner:
         parents: dict[int, int | None] = {0: None}
         cost: dict[int, float] = {0: 0.0}
         bnds = rc.bounds(start, goal, cfg.margin)
+        started = time.perf_counter()
 
         for _ in range(cfg.max_iters):
+            if (cfg.max_time_ms is not None
+                    and (time.perf_counter() - started) * 1000.0 >= cfg.max_time_ms):
+                break
             self.last_iters += 1
             target = rc.sample(rng, goal, bnds, cfg.goal_sample_rate, y)
             ni = _nearest(nodes, target)

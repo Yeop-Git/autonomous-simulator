@@ -151,7 +151,7 @@ namespace V2X.Communication
             }
             catch (Exception e)
             {
-                Debug.LogError($"[V2XClient] send failed: {e.Message}");
+                Debug.LogError($"[V2XClient] send failed: {e}");
                 _connected = false;
             }
             finally

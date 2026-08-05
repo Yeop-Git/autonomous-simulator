@@ -47,6 +47,15 @@ def test_nearest_lane():
     assert net.nearest_lane([0.1, 0.0, 10.0]) == "hw_l0_a"
 
 
+def test_nearest_lane_uses_heading_at_crossing():
+    east = Lane("east", [[-10, 0, 0], [10, 0, 0]])
+    north = Lane("north", [[0, 0, -10], [0, 0, 10]])
+    net = LaneNetwork([east, north])
+
+    assert net.nearest_lane([0, 0, 0], heading=0.0) == "north"
+    assert net.nearest_lane([0, 0, 0], heading=90.0) == "east"
+
+
 def test_blocking_marks_positions():
     net = networks.highway_straight(lanes=1, length=50.0)
     assert not net.is_blocked([0.0, 0.0, 25.0])

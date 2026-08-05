@@ -23,8 +23,10 @@ Pipeline (simplified, no perception):
 ## Architecture
 
 - **unity/** — Unity (C#). Visualization + vehicle kinematics/physics.
-  Sends world state every tick, applies control commands. The Unity editor
-  scene work (roads, lanes, intersections) is done by a human, NOT by code.
+  Sends world state every tick, applies control commands. Unity editor scene
+  work (roads, lanes, intersections, object/component setup) may be performed
+  with Unity MCP when it is available. Keep generated scene changes reviewable
+  and verify them in the Unity Editor with console checks and visual captures.
 - **server/** — Python central control server. Owns the world model,
   planning, collision prediction, traffic control, behavior decisions.
 - **experiments/** — experiment runners + analysis notebooks.
@@ -78,8 +80,21 @@ Python server (planners, collision prediction, reservation, merge logic),
 Unity C# scripts (VehicleController, V2XClient, FSM, logging), experiment
 runners, analysis notebooks. These are well-specified and fast to generate.
 
-## What needs a human (do not try to automate)
+## Unity editor automation and human validation
 
-Unity editor scene construction, road/lane geometry placement, controller
-gain tuning (Pure Pursuit lookahead, Stanley gain, PID), and Unity-Python
-timestep sync debugging. Flag these to the user rather than guessing.
+Unity editor work may be automated with Unity MCP. This includes creating or
+duplicating scenes, placing roads/lane geometry, creating and configuring GameObjects,
+assigning components and references, saving scenes, entering Play Mode, reading the
+Console, and capturing Game/Scene views for verification. Prefer Unity MCP over
+hand-authored `.unity` YAML whenever the editor connection is available.
+
+Use a reviewable workflow: inspect the active project/scene first, make bounded
+changes, save explicitly, check compilation and Console errors, run the scene, and
+capture visual evidence. Never silently replace an existing scene; create a separate
+scene or a backup when the requested change is experimental.
+
+Human validation is still required for subjective or hardware/timestep-sensitive
+work: final road/lane visual alignment, controller gain tuning (Pure Pursuit
+lookahead, Stanley gain, PID), and Unity-Python timestep-sync driving quality.
+Unity MCP may assist with these tasks and collect measurements, but surface the
+remaining judgment or instability to the user instead of guessing.

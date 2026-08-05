@@ -1,5 +1,6 @@
 """Phase 6 — urban: traffic lights, intersection reservation, pedestrian yield."""
 import math
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +9,9 @@ from central_control import CentralController
 from intersection import IntersectionManager
 from traffic import GREEN, RED, YELLOW, TrafficLight, TrafficLightManager
 from world_model import DynamicVehicle, Lane, LaneNetwork
+
+
+URBAN_NETWORK = Path(__file__).parents[1] / "scenarios" / "Urban_lanes.json"
 
 
 def veh(vid, pos, vel, lane="L"):
@@ -40,6 +44,18 @@ def test_no_stop_on_green():
     mgr.add(TrafficLight("l", stop_line=[0, 0, 100], green_time=10, yellow_time=3,
                          red_time=10))
     assert not mgr.should_stop([0, 0, 80], speed=10, light_id="l", t=1.0)
+
+
+def test_protected_left_has_clearance_before_pedestrian_phase():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    left = controller.traffic.lights["urban_nb_1_in"]
+
+    assert left.state(41.9) == GREEN
+    assert left.state(42.1) == YELLOW
+    assert left.state(44.1) == RED
+    assert not controller._is_pedestrian_phase(46.9)
+    assert controller._is_pedestrian_phase(47.0)
+    assert left.state(47.0) == RED
 
 
 def test_yellow_stops_only_if_stoppable():
@@ -106,8 +122,426 @@ def test_protected_left_phase_holds_oncoming_traffic():
     commands = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}
     assert commands["left"]["target_speed"] > 0
     assert commands["left"]["behavior"] != "EmergencyBraking"
-    assert 0 < commands["oncoming"]["target_speed"] < 13.9
+    # Center is four metres from the line, inside the enlarged 5.5 m buffer.
+    assert commands["oncoming"]["target_speed"] == 0.0
     assert commands["oncoming"]["behavior"] == "WaitingAtIntersection"
+
+
+def _left_turn_state(time, position, lane, target_lane=None, speed=8.0):
+    return {
+        "time": time, "tick": 1, "scenario": "urban",
+        "vehicles": [{
+            "id": "ego", "type": "car", "position": position,
+            "velocity": [0, 0, speed], "acceleration": [0, 0, 0],
+            "heading": 0, "current_lane": lane, "target_lane": target_lane,
+            "maneuver": "left", "has_goal": True,
+            "goal": [-191, 0, 5.4], "behavior_state": "LaneKeeping",
+        }],
+        "objects": [], "events": [],
+    }
+
+
+def _queued_vehicle(vehicle_id, position, lane, speed=0.0):
+    return {
+        "id": vehicle_id, "type": "car", "position": position,
+        "velocity": [0, 0, speed], "acceleration": [0, 0, 0],
+        "heading": 0, "current_lane": lane, "target_lane": None,
+        "maneuver": "left", "has_goal": True,
+        "goal": [-191, 0, 5.4], "behavior_state": "WaitingAtIntersection",
+    }
+
+
+def test_left_strategy_changes_lane_then_uses_protected_turn_connector():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    cmd = controller.step(_left_turn_state(
+        5.0, [5.4, 0, -64], "urban_nb_0_in", "urban_nb_1_in"))["commands"][0]
+
+    assert cmd["behavior"] == "LaneChanging"
+    assert cmd["target_lane"] == "urban_nb_1_in"
+    assert cmd["left_turn_phase"] == "LaneChanging"
+    assert cmd["turn_signal"] == "left"
+    path = cmd["path"]
+    assert path[1][0] < path[0][0], "first complete the move into the left lane"
+    assert path[4][2] <= -30.0, "lane change must finish well before the stop line"
+    assert len(path) == 5
+    assert all(p[2] < -20 for p in path), \
+        "lane-change phase must not expose intersection waypoints"
+
+
+def test_left_change_accepts_runtime_moving_leader_gap_and_merges_behind():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        5.0, [5.4, 0, -61.08], "urban_nb_0_in",
+        "urban_nb_1_in", speed=4.0)
+    state["vehicles"].append(_queued_vehicle(
+        "moving_left_leader", [1.8, 0, -45.08],
+        "urban_nb_1_in", speed=4.0))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}["ego"]
+
+    assert cmd["left_turn_phase"] == "LaneChanging"
+    assert cmd["target_lane"] == "urban_nb_1_in"
+    assert 12.0 <= cmd["path"][-1][2] - state["vehicles"][0]["position"][2] < 20.0
+
+
+def test_left_lane_change_ends_behind_stopped_target_lane_queue():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        5.0, [5.4, 0, -64], "urban_nb_0_in", "urban_nb_1_in")
+    state["vehicles"].append(_queued_vehicle(
+        "left_queue", [1.8, 0, -29], "urban_nb_1_in"))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}["ego"]
+
+    assert cmd["behavior"] == "LaneChanging"
+    assert cmd["path"][4][2] <= -39.0, \
+        "merge endpoint must retain the configured six-metre bumper gap"
+    assert cmd["target_speed"] < 8.0, \
+        "ego must already match the stopped target-lane queue"
+
+
+def test_left_lane_change_waits_before_deadline_when_queue_gap_is_too_small():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        5.0, [5.4, 0, -64], "urban_nb_0_in", "urban_nb_1_in")
+    state["vehicles"].append(_queued_vehicle(
+        "left_queue", [1.8, 0, -48], "urban_nb_1_in"))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}["ego"]
+
+    assert cmd["target_lane"] == "urban_nb_0_in"
+    assert cmd["behavior"] == "WaitingAtIntersection"
+    assert cmd["target_speed"] < 8.0
+    assert cmd["path"][-1][2] <= -35.0, \
+        "do not let a rejected request retain a route through the intersection"
+
+
+def test_left_lane_queue_is_followed_after_lane_change_completes():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        36.0, [1.8, 0, -52], "urban_nb_1_in", speed=8.0)
+    state["vehicles"].append(_queued_vehicle(
+        "left_queue", [1.8, 0, -36], "urban_nb_1_in"))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}["ego"]
+
+    assert cmd["behavior"] == "Following"
+    assert cmd["target_speed"] < 8.0
+
+
+def test_left_strategy_waits_on_arrow_red_after_lane_change():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    cmd = controller.step(_left_turn_state(
+        25.0, [1.8, 0, -21], "urban_nb_1_in", speed=6.0))["commands"][0]
+
+    assert controller.traffic.state("urban_nb_0_in", 25.0) == GREEN
+    assert controller.traffic.state("urban_nb_1_in", 25.0) == RED
+    assert cmd["behavior"] == "WaitingAtIntersection"
+    assert cmd["target_speed"] == 0.0
+    assert cmd["left_turn_phase"] == "SignalWaiting"
+    assert all(p[2] <= -16.0 for p in cmd["path"])
+
+
+def test_left_strategy_does_not_force_a_late_change_across_red_arrow():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    cmd = controller.step(_left_turn_state(
+        30.0, [5.4, 0, -21], "urban_nb_0_in",
+        "urban_nb_1_in", speed=6.0))["commands"][0]
+
+    assert cmd["left_turn_phase"] == "AbortedStraight"
+    assert cmd["target_lane"] == "urban_nb_0_in"
+    assert cmd["target_speed"] > 0.0, \
+        "the straight-lane signal is green, so cancellation must continue straight"
+
+
+def test_left_strategy_rejects_lane_change_that_would_end_in_intersection():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    cmd = controller.step(_left_turn_state(
+        25.0, [5.4, 0, -30], "urban_nb_0_in",
+        "urban_nb_1_in", speed=6.0))["commands"][0]
+
+    assert cmd["target_lane"] == "urban_nb_0_in"
+    assert cmd["left_turn_phase"] == "AbortedStraight"
+    assert cmd["target_speed"] > 0.0
+    assert cmd["path"][-1][2] > 50.0
+
+
+def test_left_strategy_aborts_when_gap_stays_closed_until_deadline():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        36.0, [5.4, 0, -35], "urban_nb_0_in", "urban_nb_1_in", speed=4.0)
+    state["vehicles"].append(_queued_vehicle(
+        "left_queue", [1.8, 0, -27], "urban_nb_1_in"))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}["ego"]
+
+    assert cmd["behavior"] == "LeftTurnAborted"
+    assert cmd["target_lane"] == "urban_nb_0_in"
+    assert cmd["path"][-1][2] > 50.0
+
+
+def test_left_arrow_green_still_waits_for_stopped_leader():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        36.0, [1.8, 0, -22], "urban_nb_1_in", speed=0.0)
+    state["vehicles"].append(_queued_vehicle(
+        "left_queue", [1.8, 0, -12], "urban_nb_1_in"))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}["ego"]
+
+    assert cmd["behavior"] == "WaitingAtIntersection"
+    assert cmd["target_speed"] == 0.0
+
+
+def test_left_arrow_green_waits_when_turn_exit_is_blocked():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        36.0, [1.8, 0, -21], "urban_nb_1_in", speed=0.0)
+    state["vehicles"].append(_queued_vehicle(
+        "blocked_exit", [-13, 0, 5.4], "urban_wb_0_out"))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}["ego"]
+
+    assert cmd["behavior"] == "WaitingAtIntersection"
+    assert cmd["target_speed"] == 0.0
+
+
+def test_active_left_lane_change_brakes_without_reversing_path():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    first = _left_turn_state(
+        5.0, [5.4, 0, -64], "urban_nb_0_in", "urban_nb_1_in", speed=8.0)
+    controller.step(first)
+    second = _left_turn_state(
+        5.1, [4.9, 0, -62], "urban_nb_0_in", "urban_nb_1_in", speed=8.0)
+    second["vehicles"].append(_queued_vehicle(
+        "new_hazard", [1.8, 0, -61], "urban_nb_1_in"))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(second)["commands"]}["ego"]
+
+    assert cmd["left_turn_phase"] == "LaneChanging"
+    assert cmd["target_speed"] == 0.0
+    assert cmd["path"][1][0] < cmd["path"][0][0], \
+        "an active change may brake but must not suddenly steer back right"
+
+
+def test_active_left_lane_change_keeps_moving_left_after_halfway_point():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    controller.step(_left_turn_state(
+        5.0, [5.4, 0, -64], "urban_nb_0_in", "urban_nb_1_in", speed=4.0))
+
+    halfway = _left_turn_state(
+        5.1, [3.6, 0, -35.5], "urban_nb_0_in", "urban_nb_1_in", speed=1.0)
+    cmd = {c["vehicle_id"]: c for c in controller.step(halfway)["commands"]}["ego"]
+
+    assert cmd["left_turn_phase"] == "LaneChanging"
+    assert cmd["path"][1][0] < cmd["path"][0][0], \
+        "per-tick replanning must preserve completed lateral progress"
+    assert all(cmd["path"][i + 1][0] <= cmd["path"][i][0]
+               for i in range(len(cmd["path"]) - 1))
+
+
+def test_current_lane_leader_inside_safe_gap_commands_full_stop():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        36.0, [1.8, 0, -40], "urban_nb_1_in", speed=6.0)
+    state["vehicles"].append(_queued_vehicle(
+        "leader", [1.8, 0, -30], "urban_nb_1_in"))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}["ego"]
+
+    assert cmd["target_speed"] == 0.0
+
+
+def test_current_lane_emergency_prevents_left_change_from_starting():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        5.0, [5.4, 0, -60], "urban_nb_0_in", "urban_nb_1_in", speed=8.0)
+    state["vehicles"].append(_queued_vehicle(
+        "current_leader", [5.4, 0, -52], "urban_nb_0_in"))
+
+    cmd = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}["ego"]
+
+    assert cmd["target_lane"] == "urban_nb_0_in"
+    assert cmd["left_turn_phase"] == "LaneChangeWaiting"
+    assert cmd["target_speed"] == 0.0
+
+
+def test_left_turn_completion_centers_lane_and_cancels_indicator():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        36.0, [-20, 0, 5.4], "urban_wb_0_out", speed=5.0)
+    state["vehicles"][0]["velocity"] = [-5, 0, 0]
+    state["vehicles"][0]["heading"] = 270.0
+    state["vehicles"][0]["target_lane"] = None
+
+    cmd = controller.step(state)["commands"][0]
+
+    assert cmd["left_turn_phase"] == "Completed"
+    assert cmd["turn_signal"] == "none"
+
+
+def test_left_turn_policy_uses_lane_roles_not_urban_lane_ids():
+    lanes = [
+        Lane("ordinary_approach", [[0, 0, -60], [0, 0, -10]],
+             left_lane_id="pocket_alpha"),
+        Lane("pocket_alpha", [[-3.5, 0, -60], [-3.5, 0, -10]],
+             right_lane_id="ordinary_approach",
+             next_lane_ids=["continue_beta", "curve_gamma"]),
+        Lane("continue_beta", [[-3.5, 0, -10], [-3.5, 0, 30]],
+             next_lane_ids=["north_exit"]),
+        Lane("north_exit", [[-3.5, 0, 30], [-3.5, 0, 70]]),
+        Lane("curve_gamma", [[-3.5, 0, -10], [-12, 0, -2], [-20, 0, 0]],
+             next_lane_ids=["departure_delta"]),
+        Lane("departure_delta", [[-20, 0, 0], [-70, 0, 0]]),
+    ]
+    controller = CentralController(LaneNetwork(lanes, scenario="custom_city"))
+    controller.traffic.add(TrafficLight(
+        "pocket_alpha", stop_line=[-3.5, 0, -10], approach_heading=0,
+        green_time=20, yellow_time=3, red_time=20))
+    state = _left_turn_state(
+        5.0, [0, 0, -55], "ordinary_approach", "pocket_alpha", speed=6.0)
+    state["vehicles"][0]["goal"] = [-65, 0, 0]
+
+    cmd = controller.step(state)["commands"][0]
+    context = controller._left_turn_contexts["ego"]
+
+    assert context.source_lane == "ordinary_approach"
+    assert context.target_lane == "pocket_alpha"
+    assert context.connector_lane == "curve_gamma"
+    assert context.exit_lane == "departure_delta"
+    assert cmd["left_turn_phase"] == "LaneChanging"
+
+
+def test_left_strategy_enters_turn_only_on_protected_arrow_green():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    cmd = controller.step(_left_turn_state(
+        36.0, [1.8, 0, -21], "urban_nb_1_in", speed=0.0))["commands"][0]
+
+    assert cmd["behavior"] != "WaitingAtIntersection"
+    assert cmd["target_speed"] > 0.0
+    assert cmd["left_turn_phase"] == "IntersectionEntry"
+    assert any(p[0] < -5 and p[2] > 4 for p in cmd["path"])
+
+
+def test_headless_urban_left_turn_runs_lane_change_wait_and_turn_sequence():
+    """Exercise the same continuous state/command loop used with Unity."""
+    network = LaneNetwork.from_json(URBAN_NETWORK)
+    sim = HeadlessSim(network, dt=0.1, scenario="urban")
+    sim.time = 5.0
+    goal = [-191, 0, 5.4]
+    sim.add_vehicle(
+        "urban_left_turn", [1.8, 0, -45.08], "urban_nb_1_in",
+        speed=4.0, goal=goal, maneuver="left")
+    ego = sim.add_vehicle(
+        "urban_ego", [5.4, 0, -61.08], "urban_nb_0_in",
+        speed=4.0, goal=goal, maneuver="left",
+        target_lane="urban_nb_1_in")
+
+    phases = []
+    lanes = []
+    min_distance = math.inf
+    for _ in range(650):
+        command = sim.step()
+        ego_cmd = next(c for c in command["commands"]
+                       if c["vehicle_id"] == "urban_ego")
+        phase = ego_cmd.get("left_turn_phase")
+        if phase and (not phases or phases[-1] != phase):
+            phases.append(phase)
+        lanes.append(ego.lane)
+        min_distance = min(min_distance, sim.min_pairwise_distance())
+        if phase == "Completed":
+            break
+
+    assert "LaneChanging" in phases, phases
+    assert "urban_nb_1_in" in lanes, (phases, ego.position, ego.lane)
+    assert "SignalWaiting" in phases, phases
+    assert "IntersectionEntry" in phases, phases
+    assert "IntersectionCrossing" in phases, phases
+    assert phases.index("LaneChanging") < phases.index("SignalWaiting")
+    assert phases.index("SignalWaiting") < phases.index("IntersectionEntry")
+    assert min_distance >= 10.0, \
+        "six-metre bumper clearance must be retained between 4.5 m vehicles"
+
+
+def test_default_straight_cruise_can_switch_to_left_while_moving():
+    network = LaneNetwork.from_json(URBAN_NETWORK)
+    sim = HeadlessSim(network, dt=0.1, scenario="urban")
+    sim.time = 5.0
+    ego = sim.add_vehicle(
+        "urban_ego", [5.4, 0, -64], "urban_nb_0_in",
+        speed=0.0, goal=[5.4, 0, 70], maneuver="straight")
+
+    for _ in range(20):
+        sim.step()
+
+    assert ego.position[2] > -64.0
+    assert ego.lane == "urban_nb_0_in"
+    ego.maneuver = "left"
+    ego.target_lane = "urban_nb_1_in"
+    ego.goal = [-191, 0, 5.4]
+
+    phases = []
+    for _ in range(220):
+        command = sim.step()
+        ego_cmd = next(c for c in command["commands"]
+                       if c["vehicle_id"] == "urban_ego")
+        phases.append(ego_cmd.get("left_turn_phase"))
+        if ego.lane == "urban_nb_1_in":
+            break
+
+    assert "LaneChanging" in phases
+    assert "AbortedStraight" not in phases
+    assert ego.lane == "urban_nb_1_in"
+
+
+def test_stopped_left_queue_leader_enters_on_green_with_follower_behind():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        36.0, [1.8, 0, -21.495], "urban_nb_1_in", speed=0.0)
+    state["vehicles"][0]["id"] = "leader"
+    follower = _left_turn_state(
+        36.0, [2.04, 0, -32.11], "urban_nb_1_in", speed=0.0)["vehicles"][0]
+    follower["id"] = "follower"
+    state["vehicles"].append(follower)
+
+    commands = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}
+
+    assert commands["leader"]["left_turn_phase"] == "IntersectionEntry"
+    assert commands["leader"]["target_speed"] > 0.0
+    assert commands["follower"]["left_turn_phase"] in {
+        "ApproachStopLine", "SignalWaiting"}
+
+
+def test_left_green_ignores_pedestrian_waiting_safely_on_curb():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        36.0, [1.8, 0, -21.5], "urban_nb_1_in", speed=0.0)
+    state["objects"].append({
+        "id": "waiting_pedestrian", "type": "pedestrian",
+        "position": [-9.0, 0.0, -13.0],
+        "velocity": [0.0, 0.0, 0.0], "radius": 0.5,
+    })
+
+    cmd = controller.step(state)["commands"][0]
+
+    assert cmd["left_turn_phase"] == "IntersectionEntry"
+    assert cmd["target_speed"] > 0.0
+
+
+def test_left_green_waits_for_pedestrian_inside_turn_corridor():
+    controller = CentralController(LaneNetwork.from_json(URBAN_NETWORK))
+    state = _left_turn_state(
+        36.0, [1.8, 0, -21.5], "urban_nb_1_in", speed=0.0)
+    state["objects"].append({
+        "id": "crossing_pedestrian", "type": "pedestrian",
+        "position": [1.8, 0.0, -13.0],
+        "velocity": [1.5, 0.0, 0.0], "radius": 0.5,
+    })
+
+    cmd = controller.step(state)["commands"][0]
+
+    assert cmd["left_turn_phase"] == "SignalWaiting"
+    assert cmd["target_speed"] == 0.0
 
 
 def test_real_urban_cycle_starts_with_perpendicular_traffic_green():
@@ -124,12 +558,12 @@ def test_red_signal_approach_speed_stops_before_painted_line():
     lane = Lane("urban_nb_0_in", [[5.4, 0, -70], [5.4, 0, -11]])
     controller = CentralController(LaneNetwork([lane], scenario="urban"))
 
-    def command_at(z):
+    def command_at(z, speed=10.0):
         state = {
             "time": 5.0, "tick": 1, "scenario": "urban",
             "vehicles": [{
                 "id": "ego", "type": "car", "position": [5.4, 0, z],
-                "velocity": [0, 0, 10], "acceleration": [0, 0, 0],
+                "velocity": [0, 0, speed], "acceleration": [0, 0, 0],
                 "heading": 0, "current_lane": "urban_nb_0_in",
                 "target_lane": None, "has_goal": False,
                 "goal": [5.4, 0, 60], "behavior_state": "LaneKeeping",
@@ -138,8 +572,11 @@ def test_red_signal_approach_speed_stops_before_painted_line():
         }
         return controller.step(state)["commands"][0]
 
+    early_approach = command_at(-65.0, 13.9)
     approaching = command_at(-30.0)
     at_line_buffer = command_at(-17.0)
+    assert 0.0 < early_approach["target_speed"] < 13.9
+    assert early_approach["behavior"] == "WaitingAtIntersection"
     assert 0.0 < approaching["target_speed"] < 13.9
     assert at_line_buffer["target_speed"] == 0.0
     assert at_line_buffer["behavior"] == "WaitingAtIntersection"

@@ -46,6 +46,8 @@ class SimVehicle:
     path_arc: float = 0.0  # monotone arc position along the current path
     behavior: str = "LaneKeeping"
     arrived: bool = False
+    maneuver: str = "straight"
+    target_lane: Optional[str] = None
 
 
 @dataclass
@@ -74,9 +76,11 @@ class HeadlessSim:
 
     # ------------------------------------------------------------------ #
     def add_vehicle(self, vid: str, position: Vec3, lane: str, speed: float = 0.0,
-                    goal: Optional[Vec3] = None) -> SimVehicle:
+                    goal: Optional[Vec3] = None, maneuver: str = "straight",
+                    target_lane: Optional[str] = None) -> SimVehicle:
         v = SimVehicle(id=vid, position=list(position), speed=speed, lane=lane,
-                       goal=list(goal) if goal else None, has_goal=goal is not None)
+                       goal=list(goal) if goal else None, has_goal=goal is not None,
+                       maneuver=maneuver, target_lane=target_lane)
         self._set_velocity_from_lane(v)
         self.vehicles[vid] = v
         return v
@@ -99,6 +103,7 @@ class HeadlessSim:
                     "id": v.id, "type": v.type,
                     "position": v.position, "velocity": v.velocity,
                     "heading": v.heading, "current_lane": v.lane,
+                    "target_lane": v.target_lane, "maneuver": v.maneuver,
                     "has_goal": v.has_goal, "goal": v.goal or [0.0, 0.0, 0.0],
                     "behavior_state": v.behavior,
                 }
@@ -124,7 +129,14 @@ class HeadlessSim:
                 continue
             v.behavior = cmd.get("behavior", v.behavior)
             if cmd.get("path"):
-                v.path = [list(p) for p in cmd["path"]]
+                next_path = [list(p) for p in cmd["path"]]
+                # Unity replaces its commanded path on every message and
+                # projects from the current transform.  A stale arc from the
+                # previous polyline can otherwise clamp a headless vehicle to
+                # the end of a newly generated lane-change path.
+                v.path_arc = _project_arc(
+                    next_path, v.position, min_arc=0.0, window=math.inf)
+                v.path = next_path
             self._apply(v, cmd)
 
         if self.logger is not None:
@@ -181,9 +193,25 @@ class HeadlessSim:
         else:
             self._advance_along_lane(v, advance)
 
-        lane = self.network.nearest_lane(v.position)
+        candidates = {v.lane}
+        current = self.network.lane(v.lane)
+        if current is not None:
+            candidates.update(current.next_lane_ids)
+            if current.left_lane_id:
+                candidates.add(current.left_lane_id)
+            if current.right_lane_id:
+                candidates.add(current.right_lane_id)
+        if v.target_lane:
+            candidates.add(v.target_lane)
+            target = self.network.lane(v.target_lane)
+            if target is not None:
+                candidates.update(target.next_lane_ids)
+        lane = self.network.nearest_lane(
+            v.position, heading=v.heading, candidate_ids=candidates)
         if lane:
             v.lane = lane
+        if v.target_lane == v.lane:
+            v.target_lane = None
 
     def _advance_along_path(self, v: SimVehicle, distance: float) -> None:
         """Move ``distance`` m forward along the commanded path polyline.

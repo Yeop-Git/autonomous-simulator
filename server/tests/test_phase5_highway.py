@@ -44,6 +44,32 @@ def test_lane_change_far_traffic_accepted():
     assert d.accept
 
 
+def test_lane_change_uses_acc_for_accepted_front_gap():
+    net = networks.highway_straight(lanes=2, length=400.0)
+    ego = veh("ego", [0, 0, 50], [0, 0, 20], "hw_l0_a")
+    # 36 m bumper gap satisfies the lane-change headway. A raw
+    # constant-velocity predictor sees a collision because it ignores the ACC
+    # deceleration that is applied throughout the lateral blend.
+    stopped_leader = veh(
+        "leader", [3.5, 0, 90.5], [0, 0, 0], "hw_l1_a")
+
+    decision = lane_change.evaluate(ego, "hw_l1_a", [stopped_leader], net)
+
+    assert decision.accept
+    assert decision.lead_id == "leader"
+
+
+def test_lane_change_waits_for_fast_rear_vehicle():
+    net = networks.highway_straight(lanes=2, length=400.0)
+    ego = veh("ego", [0, 0, 100], [0, 0, 12], "hw_l0_a")
+    fast_rear = veh("rear", [3.5, 0, 65], [0, 0, 30], "hw_l1_a")
+
+    decision = lane_change.evaluate(ego, "hw_l1_a", [fast_rear], net)
+
+    assert not decision.accept
+    assert decision.lag_id == "rear"
+
+
 def test_central_controller_applies_requested_safe_lane_change():
     net = networks.highway_straight(lanes=2, length=300.0)
     controller = CentralController(net)

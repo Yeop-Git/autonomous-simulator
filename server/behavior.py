@@ -11,6 +11,7 @@ Sits between collision prediction and the controllers. Two pieces:
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
@@ -59,8 +60,9 @@ def find_leader(ego: DynamicVehicle, others: Iterable[DynamicVehicle],
         return None
 
     # bucket the other vehicles by lane for cheap per-lane lookups
+    other_vehicles = list(others)
     by_lane: dict[str, list[DynamicVehicle]] = {}
-    for other in others:
+    for other in other_vehicles:
         if other.id == ego.id or not other.current_lane:
             continue
         by_lane.setdefault(other.current_lane, []).append(other)
@@ -101,6 +103,33 @@ def find_leader(ego: DynamicVehicle, others: Iterable[DynamicVehicle],
                 consider(other, base + other_arc)
         for nxt in lane.next_lane_ids:
             frontier.append((nxt, base + lane.length))
+
+    # Around a junction, lane classification can change one tick earlier for
+    # the follower than for its leader (or briefly select an overlapping
+    # connector). The graph-only search then cannot see the leader because it
+    # appears to be on a predecessor/unrelated lane. Keep a narrow physical
+    # forward-corridor fallback so a transient lane tag cannot disable ACC.
+    # Heading agreement rejects perpendicular crossing traffic, which remains
+    # the collision predictor's responsibility.
+    rad = math.radians(ego.heading)
+    forward_x, forward_z = math.sin(rad), math.cos(rad)
+    corridor_half_width = max(2.0, ego_lane.width * 0.75)
+    fallback_lane_ids = {ego.current_lane}
+    fallback_lane_ids.update(
+        lane.id for lane in network.lanes.values()
+        if ego.current_lane in lane.next_lane_ids)
+    for other in other_vehicles:
+        if other.id == ego.id or other.current_lane not in fallback_lane_ids:
+            continue
+        heading_delta = abs((other.heading - ego.heading + 180.0) % 360.0 - 180.0)
+        if heading_delta > 45.0:
+            continue
+        dx = other.position[0] - ego.position[0]
+        dz = other.position[2] - ego.position[2]
+        longitudinal = dx * forward_x + dz * forward_z
+        lateral = abs(dx * forward_z - dz * forward_x)
+        if longitudinal > 0.0 and lateral <= corridor_half_width:
+            consider(other, longitudinal)
     return best
 
 

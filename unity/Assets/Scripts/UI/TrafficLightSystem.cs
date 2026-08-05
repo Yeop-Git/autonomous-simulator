@@ -20,6 +20,8 @@ namespace V2X.UI
     /// <summary>Fixed-cycle signal visualization synchronized with simulation time.</summary>
     public class TrafficLightSystem : MonoBehaviour
     {
+        private const float CycleTime = 60f;
+
         public TrafficSignalHead[] heads;
         public float greenTime = 12f;
         public float yellowTime = 3f;
@@ -29,13 +31,13 @@ namespace V2X.UI
         // The perpendicular east-west approaches receive the initial green.
         public SignalState EastWestState => WindowState(Time.fixedTime, 0f, 10f, 3f);
         public SignalState NorthSouthState => WindowState(Time.fixedTime, 21f, 10f, 3f);
-        public SignalState ProtectedLeftState => WindowState(Time.fixedTime, 35f, 6f, 2f);
+        public SignalState ProtectedLeftState => WindowState(Time.fixedTime, 36f, 6f, 2f);
         public bool PedestriansMayCross
         {
             get
             {
-                float t = Mathf.Repeat(Time.fixedTime, 54f);
-                return (t >= 13f && t < 21f) || (t >= 43f && t < 51f);
+                float t = Mathf.Repeat(Time.fixedTime, CycleTime);
+                return (t >= 13f && t < 21f) || (t >= 47f && t < 55f);
             }
         }
 
@@ -65,7 +67,7 @@ namespace V2X.UI
 
         private static SignalState WindowState(float time, float start, float green, float yellow)
         {
-            float phase = Mathf.Repeat(time - start, 54f);
+            float phase = Mathf.Repeat(time - start, CycleTime);
             if (phase < green) return SignalState.Green;
             if (phase < green + yellow) return SignalState.Yellow;
             return SignalState.Red;

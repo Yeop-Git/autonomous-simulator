@@ -58,6 +58,35 @@ def test_find_leader_on_next_segment():
     assert res.gap == pytest.approx(20.0 - 4.5, abs=0.5)
 
 
+def test_controller_follows_stale_predecessor_tag_at_intersection_boundary():
+    incoming = Lane(id="in", centerline=[[0, 0, -20], [0, 0, 0]],
+                    next_lane_ids=["connector"])
+    connector = Lane(id="connector", centerline=[[0, 0, 0], [0, 0, 30]])
+    controller = CentralController(LaneNetwork([incoming, connector]))
+    state = {
+        "time": 0.0, "tick": 1, "scenario": "custom",
+        "vehicles": [
+            {
+                "id": "ego", "type": "car", "position": [0, 0, 1],
+                "velocity": [0, 0, 1], "heading": 0.0,
+                "current_lane": "connector", "has_goal": False,
+            },
+            {
+                # Physically ahead, but its lane tag is one transition stale.
+                "id": "lead", "type": "car", "position": [0, 0, 12],
+                "velocity": [0, 0, 0], "heading": 0.0,
+                "current_lane": "in", "has_goal": False,
+            },
+        ],
+        "objects": [], "events": [],
+    }
+
+    commands = {c["vehicle_id"]: c for c in controller.step(state)["commands"]}
+
+    assert commands["ego"]["behavior"] == "Following"
+    assert commands["ego"]["target_speed"] == 0.0
+
+
 # 3) urban_grid edge continuity (no teleport edges) ----------------------- #
 def test_urban_grid_edges_are_continuous():
     net = networks.urban_grid(rows=2, cols=2, block=60.0)

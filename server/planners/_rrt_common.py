@@ -23,6 +23,7 @@ class RRTConfig:
     edge_resolution: float = 1.0    # m between collision checks along an edge
     margin: float = 30.0            # bounds padding around the start/goal bbox
     seed: int = 0
+    max_time_ms: float | None = None  # optional real-time wall-clock budget
 
 
 def dist_xz(a: Vec3, b: Vec3) -> float:

@@ -95,6 +95,22 @@ class Lane:
             acc += seg_len
         return best_point, best_lat, best_arc
 
+    def heading_at_arc(self, arc: float) -> float:
+        """Unity-style yaw of the lane tangent at ``arc`` (0 = +Z)."""
+        remaining = max(0.0, arc)
+        fallback = 0.0
+        for i in range(len(self.centerline) - 1):
+            a, b = self.centerline[i], self.centerline[i + 1]
+            dx, dz = b[0] - a[0], b[2] - a[2]
+            length = math.hypot(dx, dz)
+            if length <= 0.0:
+                continue
+            fallback = math.degrees(math.atan2(dx, dz)) % 360.0
+            if remaining <= length:
+                return fallback
+            remaining -= length
+        return fallback
+
 
 def _project_to_segment(p: Vec3, a: Vec3, b: Vec3) -> tuple[Vec3, float, float]:
     """Project p onto segment a->b in the xz plane.
@@ -198,13 +214,27 @@ class LaneNetwork:
     def all_lane_ids(self) -> list[str]:
         return list(self.lanes.keys())
 
-    def nearest_lane(self, position: Vec3) -> Optional[str]:
-        """Lane whose centerline passes closest to ``position``."""
-        best_id, best_lat = None, math.inf
-        for lane in self.lanes.values():
-            _, lat, _ = lane.closest_point(position)
-            if lat < best_lat:
-                best_lat, best_id = lat, lane.id
+    def nearest_lane(self, position: Vec3, heading: float | None = None,
+                     candidate_ids: Iterable[str] | None = None) -> Optional[str]:
+        """Best matching lane by distance and, when supplied, heading.
+
+        ``candidate_ids`` lets a simulator preserve graph continuity at an
+        intersection instead of jumping to an unrelated overlapping lane.
+        Calls from planners intentionally omit both optional arguments.
+        """
+        candidates = (self.lanes.values() if candidate_ids is None else
+                      (self.lanes[lid] for lid in candidate_ids
+                       if lid in self.lanes))
+        best_id, best_score = None, math.inf
+        for lane in candidates:
+            _, lat, arc = lane.closest_point(position)
+            score = lat
+            if heading is not None:
+                delta = abs((heading - lane.heading_at_arc(arc) + 180.0)
+                            % 360.0 - 180.0)
+                score += delta / 30.0
+            if score < best_score:
+                best_score, best_id = score, lane.id
         return best_id
 
     def block(self, position: Vec3, radius: float = 1.0) -> None:

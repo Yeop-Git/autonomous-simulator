@@ -71,6 +71,8 @@ namespace V2X.Protocol
         public float target_speed;         // m/s, 0 = stop
         public string target_lane;
         public string behavior;
+        public string left_turn_phase;
+        public string turn_signal = "none";
         public List<float[]> path = new();
         public bool lka_enabled = true;
     }

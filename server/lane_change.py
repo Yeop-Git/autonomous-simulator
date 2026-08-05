@@ -18,8 +18,8 @@ from collision_predictor import CollisionPredictor
 from world_model import DynamicVehicle, LaneNetwork
 
 VEHICLE_LENGTH = 4.5
-STANDSTILL_GAP = 4.0
-TIME_GAP = 1.0  # s of headway required fore and aft to accept a change
+STANDSTILL_GAP = 6.0
+TIME_GAP = 1.5  # lane-change acceptance; ACC keeps the roomier 2.0 s gap
 
 
 @dataclass
@@ -43,7 +43,8 @@ def _arc(network: LaneNetwork, lane_id: str, position) -> Optional[float]:
 
 def evaluate(ego: DynamicVehicle, target_lane: str,
              others: Iterable[DynamicVehicle], network: LaneNetwork,
-             predictor: Optional[CollisionPredictor] = None) -> LaneChangeDecision:
+             predictor: Optional[CollisionPredictor] = None,
+             time_gap: float = TIME_GAP) -> LaneChangeDecision:
     """Decide whether ``ego`` may change into ``target_lane``."""
     if network.lane(target_lane) is None:
         return LaneChangeDecision(False, target_lane, reason="no such lane")
@@ -68,8 +69,8 @@ def evaluate(ego: DynamicVehicle, target_lane: str,
             lag_gap, lag = gap, o
 
     # speed-dependent required gaps
-    req_lead = STANDSTILL_GAP + TIME_GAP * ego.speed
-    req_lag = STANDSTILL_GAP + TIME_GAP * (lag.speed if lag else 0.0)
+    req_lead = STANDSTILL_GAP + time_gap * ego.speed
+    req_lag = STANDSTILL_GAP + time_gap * (lag.speed if lag else 0.0)
 
     if lead_gap < req_lead:
         return LaneChangeDecision(False, target_lane, "lead gap too small",
@@ -80,15 +81,17 @@ def evaluate(ego: DynamicVehicle, target_lane: str,
                                   lead_gap, lag_gap,
                                   lead.id if lead else None, lag.id if lag else None)
 
-    # predictive check: would entering the lane breach safety with lead/lag?
+    # Front spacing is already speed-dependent and the central ACC immediately
+    # reduces speed against that leader during the lateral blend. Re-applying
+    # a constant-velocity collision prediction to the leader assumes the ACC
+    # command is ignored and rejects otherwise usable gaps. Keep prediction
+    # for the rear vehicle, whose response is outside ego control.
     predictor = predictor or CollisionPredictor()
-    for other in (lead, lag):
-        if other is None:
-            continue
-        conflict = predictor.pair_conflict(ego, other)
+    if lag is not None:
+        conflict = predictor.pair_conflict(ego, lag)
         if conflict is not None and conflict.ttc <= predictor.horizon:
             return LaneChangeDecision(False, target_lane,
-                                      f"predicted conflict with {other.id}",
+                                      f"predicted conflict with {lag.id}",
                                       lead_gap, lag_gap,
                                       lead.id if lead else None,
                                       lag.id if lag else None)

@@ -28,6 +28,25 @@ namespace V2X.EditorTools
     {
         private const string SceneDir = "Assets/Scenes";
         private const string MaterialDir = "Assets/Generated/Materials";
+        private const string PedestrianAssetPath =
+            "Assets/Pedestrian/Pedestrian.prefab";
+        private const string PedestrianBodyMaterialPath =
+            "Assets/Pedestrian/Materials/Base.mat";
+        private const string PedestrianJointMaterialPath =
+            "Assets/Pedestrian/Materials/Joint.mat";
+        private const string CarPaletteMaterialPath =
+            "Assets/Pack_FREE_Cars/Materials/ColorPalette.mat";
+        private static readonly string[] CarPrefabPaths =
+        {
+            "Assets/Pack_FREE_Cars/Prefabs/Hatchback.prefab",
+            "Assets/Pack_FREE_Cars/Prefabs/Pickup.prefab",
+            "Assets/Pack_FREE_Cars/Prefabs/Police.prefab",
+            "Assets/Pack_FREE_Cars/Prefabs/Taxi.prefab",
+            "Assets/Pack_FREE_Cars/Prefabs/Towtruck.prefab",
+            "Assets/Pack_FREE_Cars/Prefabs/Truck.prefab",
+            "Assets/Pack_FREE_Cars/Prefabs/Van.prefab",
+            "Assets/Pack_FREE_Cars/Prefabs/VanBig.prefab",
+        };
 
         [MenuItem("V2X/Build All Demo Scenes")]
         public static void BuildAllScenes()
@@ -219,7 +238,7 @@ namespace V2X.EditorTools
                 BezierPoints(nb0In.Centerline()[^1], new Vector3(5.4f, 0f, -5.4f), eb0Out.Centerline()[0], 8));
             nb0In.nextLanes.Add(northRight); northRight.nextLanes.Add(eb0Out); lanes.Add(northRight);
             var northLeft = CreateLane("urban_nb_left", 8f,
-                BezierPoints(nb1In.Centerline()[^1], new Vector3(1.8f, 0f, 5.4f), wb0Out.Centerline()[0], 10));
+                BezierPoints(nb1In.Centerline()[^1], new Vector3(1.8f, 0f, 5.4f), wb0Out.Centerline()[0], 16));
             nb1In.nextLanes.Add(northLeft); northLeft.nextLanes.Add(wb0Out); lanes.Add(northLeft);
 
             // Stripes are perpendicular to the pedestrian walking direction.
@@ -296,11 +315,28 @@ namespace V2X.EditorTools
 
         private static VehicleController CreateVehicle(string id, Vector3 position, Vector3 goalPosition, Color color)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = id;
+            var go = new GameObject(id);
             go.transform.position = position;
-            go.transform.localScale = new Vector3(1.8f, .9f, 4.2f);
-            ApplyMaterial(go, color);
+
+            string prefabPath = SelectCarPrefabPath(id);
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (prefab != null)
+            {
+                var visual = (GameObject)PrefabUtility.InstantiatePrefab(prefab, go.transform);
+                visual.name = $"Visual_{prefab.name}";
+                visual.transform.localPosition = Vector3.down * .5f;
+                visual.transform.localRotation = Quaternion.identity;
+                ApplyCompatibleCarMaterial(visual, color);
+            }
+            else
+            {
+                var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                visual.name = "Fallback Vehicle Visual";
+                visual.transform.SetParent(go.transform, false);
+                visual.transform.localScale = new Vector3(1.8f, .9f, 4.2f);
+                ApplyMaterial(visual, color);
+            }
+
             var controller = go.AddComponent<VehicleController>();
             controller.vehicleId = id;
             controller.maxSpeed = 30f;
@@ -308,12 +344,34 @@ namespace V2X.EditorTools
             var goal = new GameObject($"{id}_Goal");
             goal.transform.position = goalPosition;
             controller.goal = goal.transform;
+            controller.ConfigureThroughRoute(goalPosition);
 
             var line = go.AddComponent<LineRenderer>();
             line.widthMultiplier = .22f;
             var visualizer = go.AddComponent<PathVisualizer>();
             visualizer.vehicle = controller;
+            visualizer.color = color;
             return controller;
+        }
+
+        private static int StableAssetIndex(string id, int count)
+        {
+            unchecked
+            {
+                uint hash = 2166136261;
+                foreach (char character in id)
+                    hash = (hash ^ character) * 16777619;
+                return (int)(hash % (uint)count);
+            }
+        }
+
+        private static string SelectCarPrefabPath(string id)
+        {
+            if (id.Contains("left_turn", StringComparison.OrdinalIgnoreCase))
+                return CarPrefabPaths[3]; // Taxi: compact wheelbase for the protected turn.
+            if (id.Contains("right_turn", StringComparison.OrdinalIgnoreCase))
+                return CarPrefabPaths[0]; // Hatchback: avoids a long truck clipping the corner.
+            return CarPrefabPaths[StableAssetIndex(id, CarPrefabPaths.Length)];
         }
 
         private static DynamicObjectAgent CreateDynamicObject(string id, string type, Vector3 position,
@@ -336,7 +394,24 @@ namespace V2X.EditorTools
             var go = new GameObject("Pedestrian Signal and Spawner");
             var spawner = go.AddComponent<PedestrianSpawner>();
             spawner.signals = UnityEngine.Object.FindFirstObjectByType<TrafficLightSystem>();
+            spawner.pedestrianPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PedestrianAssetPath);
+            spawner.pedestrianBodyMaterial =
+                AssetDatabase.LoadAssetAtPath<Material>(PedestrianBodyMaterialPath);
+            spawner.pedestrianJointMaterial =
+                AssetDatabase.LoadAssetAtPath<Material>(PedestrianJointMaterialPath);
+            spawner.pedestrianColors = new[]
+            {
+                new Color(1f, .78f, .05f),
+                new Color(1f, .38f, .12f),
+                new Color(.12f, .82f, .78f),
+                new Color(.48f, .9f, .16f),
+                new Color(.72f, .38f, 1f),
+                new Color(1f, .58f, .08f),
+            };
             spawner.walkingSpeed = 2.5f;
+            spawner.pedestrianScale = 1.25f;
+            spawner.postCrossingDistance = 3f;
+            spawner.postCrossingWait = 2f;
             spawner.routes = new[]
             {
                 new PedestrianRoute { spawn = new Vector3(-9f, 1f, -13f), destination = new Vector3(9f, 1f, -13f) },
@@ -712,7 +787,43 @@ namespace V2X.EditorTools
                 lane.automaticButton = automatic;
                 lane.automaticInterval = 12f;
             }
+            CreateRetryPanel(canvas, target);
             return canvas;
+        }
+
+        private static void CreateRetryPanel(Canvas canvas, VehicleController target)
+        {
+            var panel = new GameObject("Retry Panel");
+            panel.transform.SetParent(canvas.transform, false);
+            var panelRect = panel.AddComponent<RectTransform>();
+            panelRect.anchorMin = panelRect.anchorMax = new Vector2(.5f, .5f);
+            panelRect.sizeDelta = new Vector2(360f, 170f);
+            var panelImage = panel.AddComponent<Image>();
+            panelImage.color = new Color(.04f, .07f, .11f, .94f);
+
+            var messageGo = new GameObject("Message");
+            messageGo.transform.SetParent(panel.transform, false);
+            var messageRect = messageGo.AddComponent<RectTransform>();
+            messageRect.anchorMin = messageRect.anchorMax = new Vector2(.5f, .5f);
+            messageRect.anchoredPosition = new Vector2(0f, 36f);
+            messageRect.sizeDelta = new Vector2(320f, 44f);
+            var message = messageGo.AddComponent<Text>();
+            message.text = "Reference vehicle reached the exit";
+            message.alignment = TextAnchor.MiddleCenter;
+            message.fontSize = 19;
+            message.color = Color.white;
+            message.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+            var retryButton = CreateButton(panel.transform, "RETRY", new Vector2(0f, -38f), 170f);
+            var buttonRect = retryButton.GetComponent<RectTransform>();
+            buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(.5f, .5f);
+
+            var controller = canvas.gameObject.AddComponent<RetryPanelController>();
+            controller.panel = panel;
+            controller.retryButton = retryButton;
+            target.showRetryOnExit = true;
+            target.retryUI = controller;
+            panel.SetActive(false);
         }
 
         private static void CreateUrbanStrategyControls(Transform canvas, VehicleController ego)
@@ -874,6 +985,46 @@ namespace V2X.EditorTools
             }
             var renderer = go.GetComponent<Renderer>();
             if (renderer != null) renderer.sharedMaterial = material;
+        }
+
+        private static void ApplyCompatibleCarMaterial(GameObject visual, Color color)
+        {
+            var source = AssetDatabase.LoadAssetAtPath<Material>(CarPaletteMaterialPath);
+            Texture palette = source != null
+                ? source.GetTexture("_BaseMap") ?? source.mainTexture
+                : null;
+            var material = GetGeneratedMaterial(
+                $"V2X_FreeCar_{ColorUtility.ToHtmlStringRGB(color)}",
+                color, palette, .29f, .25f);
+
+            foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
+                var materials = renderer.sharedMaterials;
+                for (int i = 0; i < materials.Length; i++) materials[i] = material;
+                renderer.sharedMaterials = materials;
+            }
+        }
+
+        private static Material GetGeneratedMaterial(string name, Color color,
+            Texture texture = null, float metallic = 0f, float smoothness = .2f)
+        {
+            string path = $"{MaterialDir}/{name}.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
+
+            material.shader = shader;
+            material.color = color;
+            if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
+            if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", texture);
+            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
+            EditorUtility.SetDirty(material);
+            return material;
         }
 
         private static List<Vector3> Points(Vector3 start, Vector3 end, int count)

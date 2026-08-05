@@ -52,7 +52,7 @@ class TrafficLightManager:
         return light.state(t) if light else GREEN
 
     def should_stop(self, position: list, speed: float, light_id: str, t: float,
-                    approach_range: float = 40.0) -> bool:
+                    approach_range: float = 55.0) -> bool:
         """True if a vehicle at ``position`` should halt for ``light_id``.
 
         Stops on RED (and on YELLOW when far enough to stop comfortably) while
@@ -74,7 +74,8 @@ class TrafficLightManager:
         if st == RED:
             return True
         if st == YELLOW:
-            # stop only if we can do so before the line (comfortable decel 3 m/s^2)
-            stop_dist = speed * speed / (2.0 * 3.0)
+            # Use a conservative deceleration so yellow decisions are made
+            # early instead of waiting until the painted line is close.
+            stop_dist = speed * speed / (2.0 * 2.0)
             return stop_dist <= dist_to_line
         return False
