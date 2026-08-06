@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 0.8
   m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SkyboxMaterial: {fileID: 2100000, guid: 12ccb828343c3405fb94289774b51aad, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -3419,6 +3419,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 1
   retryUI: {fileID: 973239669}
+  despawnFadeDuration: 0.75
 --- !u!4 &209356962
 Transform:
   m_ObjectHideFlags: 0
@@ -5816,6 +5817,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &309728647
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8376,9 +8378,6 @@ MonoBehaviour:
     - {fileID: 1645677413}
     - {fileID: 277650081}
     green: {fileID: 947470872}
-  greenTime: 12
-  yellowTime: 3
-  redTime: 31
   focusVehicle: {fileID: 209356961}
 --- !u!4 &425542990
 Transform:
@@ -11217,6 +11216,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &591809746
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -18267,6 +18267,7 @@ MonoBehaviour:
   leftToggle: {fileID: 1517552412}
   rightToggle: {fileID: 529873053}
   status: {fileID: 142494313}
+  road: {fileID: 0}
   straightGoal: {x: 5.4, y: 0, z: 66}
   leftGoal: {x: -66, y: 0, z: 5.4}
   rightGoal: {x: 66, y: 0, z: -5.4}
@@ -20593,6 +20594,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &1105958314
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -20783,6 +20785,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &1115570185
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -21110,6 +21113,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::V2X.Sim.SimulationManager
   scenario: urban
+  plannerMode: rrt
   road: {fileID: 1120583338}
   vehicles:
   - {fileID: 209356961}
@@ -26242,6 +26246,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &1379549758
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -33899,7 +33904,7 @@ Camera:
     height: 1
   near clip plane: 0.1
   far clip plane: 5000
-  field of view: 72
+  field of view: 58
   orthographic: 0
   orthographic size: 10
   m_Depth: 0
@@ -33925,8 +33930,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1753594155}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.04631874, y: 0, z: 0, w: 0.99892676}
-  m_LocalPosition: {x: 5.4, y: 2.95, z: -63.45}
+  m_LocalRotation: {x: 0.07924446, y: 0, z: 0, w: 0.9968552}
+  m_LocalPosition: {x: 5.4, y: 5.7, z: -75}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -38792,6 +38797,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &1986025233
 MonoBehaviour:
   m_ObjectHideFlags: 0

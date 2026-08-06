@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 0.8
   m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SkyboxMaterial: {fileID: 2100000, guid: d48a7646f5d0547e889733d84b50cb9f, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -2850,11 +2850,11 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.3
-  far clip plane: 1000
-  field of view: 55
+  near clip plane: 0.1
+  far clip plane: 5000
+  field of view: 58
   orthographic: 0
-  orthographic size: 5
+  orthographic size: 10
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
@@ -2878,8 +2878,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 391096916}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.25431255, y: -0.13207488, z: 0.03508214, w: 0.95741874}
-  m_LocalPosition: {x: 45, y: 95, z: -50}
+  m_LocalRotation: {x: 0.07924446, y: 0, z: 0, w: 0.9968552}
+  m_LocalPosition: {x: 0, y: 5.7, z: -3}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3492,6 +3492,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &487625998
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6078,6 +6079,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &767223357
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6604,6 +6606,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &793979704
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8953,6 +8956,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &1042808204
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9143,6 +9147,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &1048749448
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9861,7 +9866,7 @@ MonoBehaviour:
     m_Value: 0
   OutputChannel: 1
   StandbyUpdate: 2
-  m_StreamingVersion: 0
+  m_StreamingVersion: 20241001
   m_LegacyPriority: 0
   Target:
     TrackingTarget: {fileID: 1461280099}
@@ -9943,8 +9948,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1097553370}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: 0.046318736, y: 0, z: 0, w: 0.99892676}
+  m_LocalPosition: {x: 0, y: 2.95, z: 8.55}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -10734,7 +10739,7 @@ MonoBehaviour:
     m_Value: 0
   OutputChannel: 1
   StandbyUpdate: 2
-  m_StreamingVersion: 0
+  m_StreamingVersion: 20241001
   m_LegacyPriority: 0
   Target:
     TrackingTarget: {fileID: 0}
@@ -10797,7 +10802,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1264579265}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: 0.29007998, y: -0.20946658, z: 0.06522919, w: 0.9315163}
   m_LocalPosition: {x: 90, y: 145, z: -40}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -11201,6 +11206,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &1325846499
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11677,6 +11683,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 1
   retryUI: {fileID: 142494313}
+  despawnFadeDuration: 0.75
 --- !u!4 &1365347409
 Transform:
   m_ObjectHideFlags: 0
@@ -13901,7 +13908,7 @@ MonoBehaviour:
     m_Value: 0
   OutputChannel: 1
   StandbyUpdate: 2
-  m_StreamingVersion: 0
+  m_StreamingVersion: 20241001
   m_LegacyPriority: 0
   Target:
     TrackingTarget: {fileID: 1461280099}
@@ -13983,8 +13990,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1543827829}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: 0.07924446, y: 0, z: 0, w: 0.9968552}
+  m_LocalPosition: {x: 0, y: 5.7, z: -3}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -15109,6 +15116,7 @@ MonoBehaviour:
   throughGoalExtension: 125
   showRetryOnExit: 0
   retryUI: {fileID: 0}
+  despawnFadeDuration: 0.75
 --- !u!114 &1675579502
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -17177,6 +17185,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::V2X.Sim.SimulationManager
   scenario: highway
+  plannerMode: rrt
   road: {fileID: 1972793037}
   vehicles:
   - {fileID: 1365347408}

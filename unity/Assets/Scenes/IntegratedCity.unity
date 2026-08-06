@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 0.8
   m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SkyboxMaterial: {fileID: 2100000, guid: d48a7646f5d0547e889733d84b50cb9f, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -30500,9 +30500,6 @@ MonoBehaviour:
     - {fileID: 1645677413}
     - {fileID: 277650081}
     green: {fileID: 947470872}
-  greenTime: 12
-  yellowTime: 3
-  redTime: 31
   focusVehicle: {fileID: 209356961}
 --- !u!4 &425542990
 Transform:
@@ -120121,7 +120118,7 @@ Camera:
     height: 1
   near clip plane: 0.1
   far clip plane: 5000
-  field of view: 72
+  field of view: 58
   orthographic: 0
   orthographic size: 10
   m_Depth: 0
@@ -120147,8 +120144,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1753594155}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.04631874, y: 0, z: 0, w: 0.99892676}
-  m_LocalPosition: {x: 5.4, y: 2.95, z: -63.45}
+  m_LocalRotation: {x: 0.07924446, y: 0, z: 0, w: 0.9968552}
+  m_LocalPosition: {x: 5.4, y: 5.7, z: -75}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
