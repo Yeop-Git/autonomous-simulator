@@ -80,7 +80,16 @@ namespace V2X.Sim
 
         private void SetGoal(Transform checkpoint, string phase)
         {
-            if (ego == null || checkpoint == null) return;
+            // A goal Transform is optional on VehicleController (HasGoal keys off
+            // it), so an ego without one is a legal wiring — not a null to walk
+            // into at the first checkpoint.
+            if (ego == null || ego.goal == null || checkpoint == null)
+            {
+                if (ego != null && ego.goal == null)
+                    Debug.LogError($"[CityDirector] ego '{ego.Id}' has no goal " +
+                                   "Transform; the showcase cannot route it");
+                return;
+            }
             ego.goal.position = checkpoint.position;
             Phase = phase;
             if (!_headingSouth && checkpoint == northCheckpoint && Runtime > 2f)
