@@ -23,8 +23,8 @@ import left_turn
 from local_avoidance import LocalAvoidanceManager
 import merge
 from traffic import TrafficLight, TrafficLightManager
-from behavior import (ARRIVED, EMERGENCY_BRAKING, STOPPING, BehaviorInputs,
-                      Leader, find_leader, next_behavior)
+from behavior import (ARRIVED, EMERGENCY_BRAKING, STOPPING, VEHICLE_LENGTH,
+                      BehaviorInputs, Leader, find_leader, next_behavior)
 from collision_predictor import CollisionPredictor
 from controllers.acc import ACCController
 from planners import AStarPlanner
@@ -52,6 +52,8 @@ MERGE_PARALLEL_SPAN = 8.0       # m; wider apart there and it is not one stream
 MERGE_PARALLEL_ANGLE = 30.0     # deg of heading disagreement allowed there
 URBAN_SIGNAL_PERIOD = 60.0
 PEDESTRIAN_PHASES = ((13.0, 21.0), (47.0, 55.0))
+# Object types that block a lane outright, as opposed to crossing it.
+BLOCKAGE_TYPES = frozenset({"unexpected_obstacle", "static_obstacle"})
 
 
 @dataclass
@@ -196,6 +198,11 @@ class CentralController:
         v = self.world.vehicles[vehicle_id]
         others = [o for o in self.world.vehicles.values() if o.id != vehicle_id]
         leader = find_leader(v, others, self.world.network)
+        blockage = self._blockage_leader(v)
+        following_a_blockage = blockage is not None and (
+            leader is None or blockage.gap < leader.gap)
+        if following_a_blockage:
+            leader = blockage
 
         # The leader's gap is managed by ACC (longitudinal). The TTC that
         # escalates the FSM to Stopping/EmergencyBraking should reflect only
@@ -391,6 +398,11 @@ class CentralController:
         # --- longitudinal command (ACC) ------------------------------- #
         free_speed = self._lane_speed(v.current_lane)
         speed = self._target_speed(behavior, v, leader, free_speed, remaining)
+        if following_a_blockage and cmd["behavior"] == "Following":
+            # ACC gives the smooth approach, but there is nothing to follow --
+            # the lane is blocked. Report what is actually happening; the label
+            # is what Unity shows and what the drive log records.
+            cmd["behavior"] = STOPPING
         if target_lane_leader is not None:
             target_lane_speed = self.acc.target_speed(
                 ego_speed=v.speed,
@@ -465,6 +477,45 @@ class CentralController:
                 speed = avoidance.target_speed
         cmd["target_speed"] = round(speed, 3)
         return cmd
+
+    def _blockage_leader(self, v) -> Optional[Leader]:
+        """A road blockage ahead in our lane, as something ACC can follow.
+
+        ``find_leader`` only knows about vehicles, so a fallen crate was left
+        entirely to the collision predictor: brake to a halt — and then, being
+        stopped and therefore no longer closing, stop counting as a conflict,
+        resume, creep, brake again. The result was a car chattering between
+        LaneKeeping and EmergencyBraking at 5 Hz, 0.9 m from the crate, for the
+        rest of the run. Following it like a stopped vehicle settles it at the
+        ordinary standstill gap and never oscillates.
+
+        The local avoidance manager overrides this whenever it is steering
+        around the obstacle instead of stopping for it.
+        """
+        lane = self.world.network.lane(v.current_lane)
+        if lane is None:
+            return None
+        rad = math.radians(v.heading)
+        forward_x, forward_z = math.sin(rad), math.cos(rad)
+        half_width = max(1.5, lane.width * 0.5)
+        best: Optional[Leader] = None
+        for obj in self.world.objects.values():
+            # Only something actually parked in the lane. A moving object is
+            # crossing it, and belongs to the collision predictor — treating it
+            # as a stopped leader would both misjudge the gap and excuse it
+            # from the TTC that triggers the brake.
+            if obj.type not in BLOCKAGE_TYPES or obj.speed > 0.5:
+                continue
+            dx = obj.position[0] - v.position[0]
+            dz = obj.position[2] - v.position[2]
+            longitudinal = dx * forward_x + dz * forward_z
+            lateral = abs(dx * forward_z - dz * forward_x)
+            if longitudinal <= 0.0 or lateral > half_width + obj.radius:
+                continue
+            gap = max(0.0, longitudinal - VEHICLE_LENGTH * 0.5 - obj.radius)
+            if best is None or gap < best.gap:
+                best = Leader(vehicle=obj, gap=gap, speed=0.0)
+        return best
 
     def _must_wait_for_signal(self, v, min_ttc: float,
                               signal_lane: str | None = None,

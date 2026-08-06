@@ -454,14 +454,50 @@ def test_hazard_blocks_lane_and_vehicle_stops():
     for _ in range(20):
         sim.step()
     sim.events = [{"type": "FallingObject", "position": [0, 0, 90]}]
-    stopped_before_hazard = False
-    for _ in range(120):
+    # The obstacle is spotted ~60 m out, so ACC brings the car down smoothly
+    # rather than slamming it to a halt; settling under 0.5 m/s takes about 14 s
+    # of that approach. What matters is that it stops, and stops well short.
+    stopped_at = None
+    for _ in range(400):
         sim.step()
         sim.events = [{"type": "FallingObject", "position": [0, 0, 90]}]  # persists
-        if sim.vehicles["car"].speed < 0.5 and sim.vehicles["car"].position[2] < 90:
-            stopped_before_hazard = True
-            break
-    assert stopped_before_hazard, "car did not stop for the blocked lane"
+        car = sim.vehicles["car"]
+        assert car.position[2] < 85.0, (
+            f"drove into the blocked lane (z={car.position[2]:.1f})")
+        if stopped_at is None and car.speed < 0.5:
+            stopped_at = car.position[2]
+    assert stopped_at is not None, "car did not stop for the blocked lane"
+    assert stopped_at < 85.0, (
+        f"stopped only {90.0 - stopped_at:.1f} m short of the hazard")
+
+
+def test_stopping_for_a_blockage_settles_instead_of_chattering():
+    """A crate in the lane is not a vehicle, so ACC never managed the gap to it.
+
+    The collision predictor alone brought the car to a halt -- and a stopped car
+    is no longer closing, so the conflict stopped counting, the car resumed,
+    crept forward, and braked again. It ended up flipping between LaneKeeping
+    and EmergencyBraking at 5 Hz, 0.9 m from the crate, for the rest of the run.
+    """
+    net = _highway_export()
+    sim = HeadlessSim(net, CentralController(net, dt=0.1), dt=0.1,
+                      scenario="highway")
+    sim.add_vehicle("ego", [3.5, 0.0, 60.0], "hw_l2", speed=22.0,
+                    goal=list(net.lane("hw_l2").end))
+    sim.add_object("cargo", "unexpected_obstacle", [3.5, 0.0, 150.0],
+                   [0.0, 0.0, 0.0], radius=1.25)
+
+    behaviors = []
+    for _ in range(400):
+        behaviors.append(sim.step()["commands"][0]["behavior"])
+
+    settled = behaviors[-100:]
+    flips = sum(1 for a, b in zip(settled, settled[1:]) if a != b)
+    assert flips == 0, f"behaviour flapped {flips} times once stopped: {set(settled)}"
+
+    gap = 150.0 - sim.vehicles["ego"].position[2]
+    assert sim.vehicles["ego"].speed < 0.1, "never came to rest"
+    assert 4.0 < gap < 20.0, f"came to rest {gap:.2f} m from the crate"
 
 
 # ---- metrics ------------------------------------------------------------- #

@@ -15,7 +15,7 @@ import math
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-from world_model import DynamicVehicle, LaneNetwork
+from world_model import DynamicObject, DynamicVehicle, LaneNetwork
 
 VEHICLE_LENGTH = 4.5  # m, used to convert center spacing to bumper gap
 
@@ -31,7 +31,9 @@ ARRIVED = "Arrived"
 
 @dataclass
 class Leader:
-    vehicle: DynamicVehicle
+    # A road blockage leads its lane exactly like a stopped car does, and only
+    # the id is ever read off this, so obstacles are allowed here too.
+    vehicle: DynamicVehicle | DynamicObject
     gap: float          # bumper-to-bumper distance (m), >= 0
     speed: float        # leader speed (m/s)
 
