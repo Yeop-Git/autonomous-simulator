@@ -38,7 +38,13 @@ namespace V2X.Sim
             SetWalkingAnimation(false);
         }
 
-        private void Update()
+        // Fixed step, not per frame: DynamicObjectAgent derives this object's
+        // reported velocity by differencing its position across FixedUpdate, and
+        // the state message goes out on the same clock. Walking on the render
+        // clock made the velocity Unity reports for a pedestrian swing with the
+        // frame rate — and that number feeds the turn-corridor check and the
+        // collision predictor's TTC. Every other mover here is already fixed-step.
+        private void FixedUpdate()
         {
             if (!_startedCrossing)
             {
@@ -49,13 +55,13 @@ namespace V2X.Sim
 
             if (_finishedCrossing)
             {
-                _finishedTime += Time.deltaTime;
+                _finishedTime += Time.fixedDeltaTime;
                 if (_finishedTime >= postCrossingWait) Remove();
                 return;
             }
 
             transform.position = Vector3.MoveTowards(
-                transform.position, destination, speed * Time.deltaTime);
+                transform.position, destination, speed * Time.fixedDeltaTime);
             if ((transform.position - destination).sqrMagnitude > .01f) return;
             _finishedCrossing = true;
             SetWalkingAnimation(false);
