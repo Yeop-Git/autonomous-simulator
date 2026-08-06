@@ -91,7 +91,15 @@ ENV/
 # =====================================================================
 server/logs/*.csv
 server/logs/*.log
-experiments/results/
+# Generated experiment data, except the figures the README embeds. Git cannot
+# re-include a file whose parent directory is excluded, so exclude the contents
+# rather than the directories.
+experiments/results/*
+!experiments/results/charts/
+experiments/results/charts/*
+!experiments/results/charts/*.png
+# Ad-hoc server traces captured while debugging a scene.
+Temp/
 *.csv
 !shared/**/*.csv
 

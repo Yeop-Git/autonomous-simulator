@@ -44,6 +44,17 @@ def _arc_along_lane(network: LaneNetwork, lane_id: str, position) -> Optional[fl
     return arc
 
 
+def _entry_arc(network: LaneNetwork, from_lane, to_lane_id: str) -> float:
+    """Arc on ``to_lane_id`` where ``from_lane`` joins it.
+
+    Zero for an ordinary end-to-start join; the merge point for an on-ramp.
+    """
+    to_lane = network.lane(to_lane_id)
+    if to_lane is None:
+        return 0.0
+    return to_lane.closest_point(from_lane.end)[2]
+
+
 def find_leader(ego: DynamicVehicle, others: Iterable[DynamicVehicle],
                 network: LaneNetwork, max_range: float = 80.0) -> Optional[Leader]:
     """Nearest vehicle ahead of ego, within ``max_range`` of forward travel.
@@ -83,14 +94,21 @@ def find_leader(ego: DynamicVehicle, others: Iterable[DynamicVehicle],
         if other_arc is not None and other_arc > ego_arc:
             consider(other, other_arc - ego_arc)
 
-    # 2) downstream lanes: distance = remaining-on-ego-lane + arc-on-that-lane
+    # 2) downstream lanes: distance = remaining-on-ego-lane + how far past the
+    #    *junction* the other car is. A successor need not begin where its
+    #    predecessor ends — an on-ramp joins the middle of the mainline lane —
+    #    so measuring the other car's arc from the successor's own start adds
+    #    the whole upstream mainline to the gap. On the Highway export that put
+    #    a car sitting on the join 132 m away instead of 17 m: out of range, no
+    #    leader, and the ramp car merged into it at full speed.
     ego_remaining = ego_lane.length - ego_arc
     visited = {ego.current_lane}
-    frontier: list[tuple[str, float]] = [
-        (nxt, ego_remaining) for nxt in ego_lane.next_lane_ids
+    frontier: list[tuple[str, float, float]] = [
+        (nxt, ego_remaining, _entry_arc(network, ego_lane, nxt))
+        for nxt in ego_lane.next_lane_ids
     ]
     while frontier:
-        lane_id, base = frontier.pop()
+        lane_id, base, entry_arc = frontier.pop()
         if lane_id in visited or base > max_range:
             continue
         visited.add(lane_id)
@@ -99,10 +117,41 @@ def find_leader(ego: DynamicVehicle, others: Iterable[DynamicVehicle],
             continue
         for other in by_lane.get(lane_id, []):
             other_arc = _arc_along_lane(network, lane_id, other.position)
-            if other_arc is not None:
-                consider(other, base + other_arc)
+            # Traffic upstream of the junction is behind us once we join it.
+            if other_arc is not None and other_arc >= entry_arc:
+                consider(other, base + other_arc - entry_arc)
         for nxt in lane.next_lane_ids:
-            frontier.append((nxt, base + lane.length))
+            frontier.append((nxt, base + lane.length - entry_arc,
+                             _entry_arc(network, lane, nxt)))
+
+    # 3) merging siblings: another lane that feeds the same junction as ours.
+    #    Its cars are on neither our lane nor a downstream one, so nothing
+    #    above sees them — yet the moment they cross the junction they are
+    #    directly ahead. On the IntegratedCity boulevard that blind spot let a
+    #    20 m/s main-lane car drive into the 8 m/s shoulder car merging in
+    #    front of it (0.01 m). Whoever reaches the junction first leads, which
+    #    is what a zipper merge asks for.
+    if ego_remaining <= max_range:
+        for successor_id in ego_lane.next_lane_ids:
+            successor = network.lane(successor_id)
+            if successor is None:
+                continue
+            our_entry = _entry_arc(network, ego_lane, successor_id)
+            for sibling_id in network.predecessors(successor_id):
+                sibling = network.lane(sibling_id)
+                if sibling is None or sibling_id == ego.current_lane:
+                    continue
+                if abs(_entry_arc(network, sibling, successor_id)
+                       - our_entry) > 1.0:
+                    continue   # joins the successor somewhere else entirely
+                for other in by_lane.get(sibling_id, []):
+                    other_arc = _arc_along_lane(
+                        network, sibling_id, other.position)
+                    if other_arc is None:
+                        continue
+                    lead = ego_remaining - (sibling.length - other_arc)
+                    if lead > 0.0:
+                        consider(other, lead)
 
     # Around a junction, lane classification can change one tick earlier for
     # the follower than for its leader (or briefly select an overlapping

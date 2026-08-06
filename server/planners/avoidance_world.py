@@ -106,3 +106,6 @@ class AvoidanceWorld:
 
     def nearest_lane(self, position: Vec3) -> str | None:
         return self.network.nearest_lane(position)
+
+    def all_lane_ids(self) -> list[str]:
+        return self.network.all_lane_ids()

@@ -49,6 +49,35 @@ def _project(position: Vec3, centerline: Path) -> tuple[int, Vec3, float]:
     return best
 
 
+LANE_TIE_BAND = 1.0   # m; lanes this close to the best one count as tied
+MAX_LANE_CANDIDATES = 4
+
+
+def _candidate_lanes(position: Vec3, world: World) -> list[str]:
+    """Lanes that could plausibly own ``position``, closest first.
+
+    Only lanes within ``LANE_TIE_BAND`` of the closest one are returned, so on
+    an ordinary stretch of road this is just ``[nearest_lane]``.
+    """
+    all_ids = getattr(world, "all_lane_ids", None)
+    if all_ids is None:
+        nearest = world.nearest_lane(position)
+        return [nearest] if nearest else []
+
+    scored: list[tuple[float, str]] = []
+    for lane_id in all_ids():
+        centerline = world.lane_centerline(lane_id)
+        if len(centerline) < 2:
+            continue
+        scored.append((_project(position, centerline)[2], lane_id))
+    if not scored:
+        return []
+    scored.sort()
+    best = scored[0][0]
+    return [lane_id for lateral, lane_id in scored[:MAX_LANE_CANDIDATES]
+            if lateral <= best + LANE_TIE_BAND]
+
+
 class AStarPlanner:
     name = "astar"
 
@@ -62,18 +91,26 @@ class AStarPlanner:
     def plan(self, start: Vec3, goal: Vec3, world: World) -> Path:
         start = list(start)
         goal = list(goal)
-        start_lane = world.nearest_lane(start)
-        goal_lane = world.nearest_lane(goal)
         self.last_lane_route = []
         self.last_expanded = 0
-        if start_lane is None or goal_lane is None:
+
+        # At an intersection several connectors leave the same point, so "the"
+        # nearest lane to a car sitting on the stop line is a coin flip: pick
+        # the left-turn connector for a car going straight and the search
+        # returns no route at all. Try the tied candidates in order instead.
+        starts = _candidate_lanes(start, world)
+        goals = _candidate_lanes(goal, world)
+        if not starts or not goals:
             return []
 
-        lane_route = self._search_lane_graph(start_lane, goal_lane, goal, world)
-        if not lane_route:
-            return []
-        self.last_lane_route = lane_route
-        return self._stitch(lane_route, start, goal, world)
+        for start_lane in starts:
+            for goal_lane in goals:
+                lane_route = self._search_lane_graph(
+                    start_lane, goal_lane, goal, world)
+                if lane_route:
+                    self.last_lane_route = lane_route
+                    return self._stitch(lane_route, start, goal, world)
+        return []
 
     # ---- lane-graph A* ---------------------------------------------------- #
     def _search_lane_graph(
@@ -127,54 +164,50 @@ class AStarPlanner:
     def _stitch(self, lane_route: list[str], start: Vec3, goal: Vec3, world: World) -> Path:
         """Concatenate lane centerlines into one path, trimmed to start/goal.
 
-        The first lane is entered at the start projection; the last lane is
-        exited at the goal projection. Consecutive duplicate points (lane
-        joins that share a vertex) are collapsed.
+        The first lane is entered at the start projection and the last lane is
+        exited at the goal projection. Every intermediate lane is entered at
+        the projection of the point where the *previous* lane ended: a
+        successor need not begin where its predecessor ends (an on-ramp merges
+        into the middle of the mainline lane), and taking such a lane from its
+        own start would teleport the path backwards to the mainline origin.
+        Consecutive duplicate points (lane joins that share a vertex) collapse.
         """
         # Single-lane route: build the sub-polyline between the two projections
         # directly (forward or backward along the lane) so the goal is never
         # lost when it projects behind the start.
         if len(lane_route) == 1:
             cl = world.lane_centerline(lane_route[0])
-            return _stitch_single(cl, start, goal) if cl else []
+            return _dedupe(_sub_polyline(cl, start, goal)) if cl else []
 
         path: Path = []
+        entry: Vec3 = list(start)
         for idx, lane_id in enumerate(lane_route):
             cl = world.lane_centerline(lane_id)
             if not cl:
                 continue
-            first = idx == 0
             last = idx == len(lane_route) - 1
-
-            if first:
-                seg_i, proj, _ = _project(start, cl)
-                segment: Path = [proj] + [list(p) for p in cl[seg_i + 1:]]
-            else:
-                segment = [list(p) for p in cl]
-
-            if last:
-                # Trim everything past the goal projection on this lane.
-                seg_i, proj, _ = _project(goal, cl)
-                segment = segment[: seg_i + 1] + [proj]
-
-            path.extend(segment)
+            path.extend(_sub_polyline(cl, entry, goal if last else None))
+            entry = list(cl[-1])  # we leave this lane where it ends
 
         return _dedupe(path)
 
 
-def _stitch_single(cl: Path, start: Vec3, goal: Vec3) -> Path:
-    """Sub-polyline of one lane between the start and goal projections, in
-    travel order (handles goal-behind-start without dropping the goal)."""
-    si, sp, _ = _project(start, cl)
-    gi, gp, _ = _project(goal, cl)
+def _sub_polyline(cl: Path, start: Vec3 | None = None,
+                  end: Vec3 | None = None) -> Path:
+    """Portion of ``cl`` between the projections of ``start`` and ``end``.
+
+    ``None`` means "the lane's own start/end". A goal that projects behind the
+    entry point yields the reversed interior rather than dropping the goal.
+    """
+    si, sp = (0, list(cl[0])) if start is None else _project(start, cl)[:2]
+    gi, gp = ((len(cl) - 2, list(cl[-1])) if end is None
+              else _project(end, cl)[:2])
     if gi >= si:
         interior = [list(p) for p in cl[si + 1: gi + 1]]
-        pts = [sp] + interior + [gp]
     else:
         interior = [list(p) for p in cl[gi + 1: si + 1]]
         interior.reverse()
-        pts = [sp] + interior + [gp]
-    return _dedupe(pts)
+    return [sp] + interior + [gp]
 
 
 def _dedupe(points: Path, eps: float = 1e-6) -> Path:

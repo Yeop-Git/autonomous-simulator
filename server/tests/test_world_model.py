@@ -119,6 +119,27 @@ def test_json_round_trip(tmp_path):
         assert loaded.neighbors(lid) == net.neighbors(lid)
 
 
+def test_predecessors_reverse_the_lane_graph():
+    net = LaneNetwork([
+        Lane(id="a", centerline=[[0, 0, 0], [0, 0, 10]], next_lane_ids=["c"]),
+        Lane(id="b", centerline=[[5, 0, 0], [0, 0, 10]], next_lane_ids=["c"]),
+        Lane(id="c", centerline=[[0, 0, 10], [0, 0, 20]], next_lane_ids=[]),
+    ])
+    assert sorted(net.predecessors("c")) == ["a", "b"]
+    assert net.predecessors("a") == []
+    assert net.predecessors("nonexistent") == []
+
+
+def test_predecessors_are_cached_but_not_shared():
+    """Callers get their own list — mutating a result must not corrupt the
+    cached index that every later lookup reads."""
+    net = networks.urban_grid(rows=2, cols=2)
+    target = next(lid for lid in net.all_lane_ids() if net.predecessors(lid))
+    first = net.predecessors(target)
+    first.append("bogus")
+    assert "bogus" not in net.predecessors(target)
+
+
 def test_helpers():
     assert dist_xz([0, 5, 0], [3, 99, 4]) == pytest.approx(5.0)
     assert polyline_length([[0, 0, 0], [0, 0, 3], [0, 0, 7]]) == pytest.approx(7.0)

@@ -12,8 +12,9 @@
     },
     "scenario": {
       "type": "string",
-      "enum": ["highway", "urban", "lka_test"],
-      "description": "Which scenario this network belongs to."
+      "enum": ["highway", "urban", "lka_test", "emergency_avoidance",
+               "integrated_city"],
+      "description": "Which scenario this network belongs to. Must stay in sync with the 'scenario' enum in state_message.schema.json."
     },
     "lanes": {
       "type": "array",

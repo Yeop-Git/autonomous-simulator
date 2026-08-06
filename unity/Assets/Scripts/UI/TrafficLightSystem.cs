@@ -23,11 +23,13 @@ namespace V2X.UI
         private const float CycleTime = 60f;
 
         public TrafficSignalHead[] heads;
-        public float greenTime = 12f;
-        public float yellowTime = 3f;
-        public float redTime = 31f;
         public VehicleController focusVehicle;
 
+        // The three phase windows below are the *same plan the Python server
+        // enforces* (CentralController's TrafficLight table). Retiming one side
+        // alone shows a driver a green the server is holding at red;
+        // test_scene_networks.py::test_unity_signal_plan_matches_the_servers
+        // fails if they drift apart.
         // The perpendicular east-west approaches receive the initial green.
         public SignalState EastWestState => WindowState(Time.fixedTime, 0f, 10f, 3f);
         public SignalState NorthSouthState => WindowState(Time.fixedTime, 21f, 10f, 3f);

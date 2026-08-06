@@ -15,7 +15,8 @@ namespace V2X.Protocol
     {
         public float time;
         public int tick;
-        public string scenario = "highway"; // "highway" | "urban" | "lka_test"
+        // "highway" | "urban" | "lka_test" | "emergency_avoidance" | "integrated_city"
+        public string scenario = "highway";
         public string planner_mode = "rrt";
         public List<VehicleState> vehicles = new();
         public List<MovingObject> objects = new();

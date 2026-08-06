@@ -19,6 +19,7 @@ from world_model import DynamicObject, DynamicVehicle, Lane, WorldModel, dist_xz
 
 ACTIVE_SCENARIOS = {"emergency_avoidance", "integrated_city"}
 HAZARD_TYPES = {"unexpected_obstacle", "static_obstacle"}
+REJOIN_RETRY_S = 1.5   # hold off after a blocked rejoin before asking again
 
 
 @dataclass
@@ -47,11 +48,16 @@ class _Maneuver:
     minimum_clearance: float = math.inf
     last_plan_time: float = -math.inf
     clear_since: float | None = None
+    rejoin_blocked_until: float = -math.inf
 
 
 class LocalAvoidanceManager:
     def __init__(self):
         self._active: dict[str, _Maneuver] = {}
+
+    def forget_all(self) -> None:
+        """Abandon every in-progress manoeuvre (the world restarted)."""
+        self._active.clear()
 
     def update(self, vehicle: DynamicVehicle, world: WorldModel) \
             -> AvoidanceDecision | None:
@@ -79,6 +85,13 @@ class LocalAvoidanceManager:
 
         if maneuver.phase in {"EscapePlanning", "ControlledStopping"}:
             if (maneuver.phase == "ControlledStopping"
+                    and maneuver.source_id not in world.objects):
+                # The hazard we stopped for is gone; hand the vehicle back to
+                # ordinary routing instead of holding a stop for a world that
+                # no longer contains a reason for it.
+                self._active.pop(vehicle.id, None)
+                return None
+            if (maneuver.phase == "ControlledStopping"
                     and world.time - maneuver.last_plan_time < 0.75):
                 return self._decision(
                     maneuver, vehicle, "ControlledStopping", 0.0)
@@ -98,11 +111,32 @@ class LocalAvoidanceManager:
                     maneuver.phase = "Yielding"
                     maneuver.path = []
                     return self._decision(maneuver, vehicle, "Yielding", 0.5)
-                if self._source_is_behind(vehicle, world, maneuver.source_id):
+                if (self._source_is_behind(vehicle, world, maneuver.source_id)
+                        and world.time >= maneuver.rejoin_blocked_until):
                     maneuver.phase = "RejoinPlanning"
                     maneuver.path = []
                     return self._decision(
                         maneuver, vehicle, "RejoinPlanning", 4.0)
+                if (self._near_path_end(vehicle, maneuver.path)
+                        and world.time - maneuver.last_plan_time >= 0.5):
+                    # In the escape lane, but the hazard is still alongside:
+                    # the escape path only reaches ~42 m ahead of where the
+                    # manoeuvre began, which for a hazard dropped just beyond
+                    # that lands its last waypoint short of the obstacle.
+                    # Extend the escape rather than idling on the final
+                    # waypoint, which wedges the vehicle short of the rejoin
+                    # condition for the rest of the run.
+                    self._plan(vehicle, world, maneuver, maneuver.target_lane)
+            if not maneuver.path:
+                # Nothing left to follow — the extension was blocked (another
+                # car's predicted swerve crossing the escape lane is enough).
+                # Evading on with a commanded speed and an empty path pins the
+                # vehicle on its last waypoint forever, because an empty path
+                # can never again satisfy the "at path end" retry condition.
+                # Hold instead; ControlledStopping keeps retrying the escape.
+                maneuver.phase = "ControlledStopping"
+                return self._decision(
+                    maneuver, vehicle, "ControlledStopping", 0.0)
             return self._decision(
                 maneuver, vehicle, "LateralEvading",
                 5.0 if maneuver.cause == "emergency" else 8.0)
@@ -114,7 +148,8 @@ class LocalAvoidanceManager:
             if passed:
                 if maneuver.clear_since is None:
                     maneuver.clear_since = world.time
-                elif world.time - maneuver.clear_since >= 1.0:
+                elif (world.time - maneuver.clear_since >= 1.0
+                        and world.time >= maneuver.rejoin_blocked_until):
                     maneuver.phase = "RejoinPlanning"
                     return self._decision(
                         maneuver, vehicle, "RejoinPlanning", 3.0)
@@ -127,6 +162,17 @@ class LocalAvoidanceManager:
                           exclude_source=True):
                 maneuver.phase = "LaneRejoining"
                 return self._decision(maneuver, vehicle, "LaneRejoining", 7.0)
+            # The home lane is occupied. Keep making progress in the escape
+            # lane and ask again shortly, rather than dropping to a dead stop:
+            # ControlledStopping replans the *escape*, which succeeds, which
+            # returns to LateralEvading, which asks to rejoin again on the very
+            # next tick — a stop-and-go stutter for as long as the lane is busy.
+            maneuver.rejoin_blocked_until = world.time + REJOIN_RETRY_S
+            if self._plan(vehicle, world, maneuver, maneuver.target_lane):
+                maneuver.phase = "LateralEvading"
+                return self._decision(
+                    maneuver, vehicle, "LateralEvading",
+                    5.0 if maneuver.cause == "emergency" else 8.0)
             maneuver.phase = "ControlledStopping"
             return self._decision(maneuver, vehicle, "ControlledStopping", 0.0)
 
@@ -203,8 +249,9 @@ class LocalAvoidanceManager:
         excluded = {vehicle.id}
         if maneuver.cause == "emergency" or exclude_source:
             excluded.add(maneuver.source_id)
-        allowed = [lane_id for lane_id in world.network.all_lane_ids()
-                   if lane_id.startswith("ea_") or lane_id.startswith("city_")]
+        allowed = self._corridor_lane_ids(
+            world, vehicle.current_lane, target_lane_id,
+            maneuver.original_lane)
         if not allowed:
             allowed = world.network.all_lane_ids()
         search_world = AvoidanceWorld(
@@ -236,6 +283,44 @@ class LocalAvoidanceManager:
         maneuver.minimum_clearance = search_world.minimum_clearance(path)
         maneuver.target_lane = target_lane_id
         return True
+
+    @staticmethod
+    def _corridor_lane_ids(world: WorldModel, *seed_lane_ids: str | None
+                           ) -> list[str]:
+        """Drivable strips the escape search may use.
+
+        The corridor is the lateral group of each seed lane — walk the
+        left/right links to their ends — plus what those strips flow into, so a
+        42 m escape that runs off the end of a short lane still has somewhere
+        to land.
+
+        This used to be a lane-id prefix filter (``ea_`` / ``city_``). In a
+        scene that mixes families it excluded the ego's *own* lane from the
+        search space, so every sample read as "off road" and the manoeuvre
+        could only fail into a permanent stop — an obstacle on an ``urban_``
+        approach of IntegratedCity parked the car for the rest of the run.
+        """
+        corridor: set[str] = set()
+        for seed in seed_lane_ids:
+            lane = world.network.lane(seed) if seed else None
+            if lane is None:
+                continue
+            corridor.add(lane.id)
+            for side in ("left_lane_id", "right_lane_id"):
+                current, walked = lane, {lane.id}
+                while current is not None:
+                    neighbour_id = getattr(current, side)
+                    if not neighbour_id or neighbour_id in walked:
+                        break
+                    walked.add(neighbour_id)
+                    corridor.add(neighbour_id)
+                    current = world.network.lane(neighbour_id)
+        for lane_id in list(corridor):
+            lane = world.network.lane(lane_id)
+            if lane is not None:
+                corridor.update(lane.next_lane_ids)
+        return [lane_id for lane_id in corridor
+                if world.network.lane(lane_id) is not None]
 
     @staticmethod
     def _planner_name(world: WorldModel) -> str:

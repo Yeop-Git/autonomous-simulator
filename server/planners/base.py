@@ -34,6 +34,10 @@ class World(Protocol):
         """Lane whose centerline passes closest to ``position`` (or None)."""
         ...
 
+    def all_lane_ids(self) -> list[str]:
+        """Every lane id in the search space."""
+        ...
+
     def is_blocked(self, position: Vec3) -> bool:
         """Whether a world position is currently obstructed."""
         ...

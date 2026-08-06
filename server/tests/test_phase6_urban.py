@@ -582,6 +582,83 @@ def test_red_signal_approach_speed_stops_before_painted_line():
     assert at_line_buffer["behavior"] == "WaitingAtIntersection"
 
 
+# ---- right turn on red (Korean rule) ------------------------------------- #
+def _right_turn_sim(lane, start, goal_lane, objects=()):
+    net = LaneNetwork.from_json(URBAN_NETWORK)
+    controller = CentralController(net, dt=0.1)
+    sim = HeadlessSim(net, controller, dt=0.1, scenario="urban")
+    sim.add_vehicle("rt", start, lane, speed=10.0,
+                    goal=list(net.lane(goal_lane).end), maneuver="right")
+    for oid, otype, position in objects:
+        sim.add_object(oid, otype, list(position), [0.0, 0.0, 0.0], radius=0.4)
+    return net, controller, sim
+
+
+def test_right_on_red_makes_a_full_stop_then_completes_the_turn():
+    """The rule is stop-then-go, not go: neither a red-light run nor a wait."""
+    net, controller, sim = _right_turn_sim(
+        "urban_nb_0_in", [5.4, 0.0, -60.0], "urban_eb_0_out")
+    light = controller.traffic.lights["urban_nb_0_in"]
+    assert light.state(0.0) == RED, "fixture assumes the approach starts red"
+
+    stopped = False
+    entered_on_red = False
+    for _ in range(400):
+        sim.step()
+        v = sim.vehicles["rt"]
+        if v.position[2] < -15.0 and v.speed <= 0.2:
+            stopped = True
+        if v.lane == "urban_nb_right" and light.state(sim.time) == RED:
+            entered_on_red = True
+
+    assert stopped, "never made the required full stop before the line"
+    assert entered_on_red, "waited out a red it is allowed to turn right on"
+    assert sim.vehicles["rt"].arrived
+
+
+def test_right_on_red_holds_for_a_pedestrian():
+    net, controller, sim = _right_turn_sim(
+        "urban_nb_0_in", [5.4, 0.0, -60.0], "urban_eb_0_out",
+        objects=[("ped", "pedestrian", [9.0, 0.0, -8.0])])
+    light = controller.traffic.lights["urban_nb_0_in"]
+
+    for _ in range(200):
+        sim.step()
+        if light.state(sim.time) != RED:
+            break
+        assert sim.vehicles["rt"].lane != "urban_nb_right", (
+            f"turned across a pedestrian on red at t={sim.time:.1f}")
+
+
+def test_right_on_red_exemption_needs_an_actual_right_turn_connector():
+    """Regression: the exemption used to be a literal list of four lane ids.
+
+    Three of them — the southbound, eastbound and westbound approaches — have
+    no right-turn connector in the export at all. A vehicle there that reported
+    ``maneuver="right"`` still got the stop-then-go exemption and drove
+    *straight* through the red light.
+    """
+    net = LaneNetwork.from_json(URBAN_NETWORK)
+    controller = CentralController(net, dt=0.1)
+    assert controller._turn_successor("urban_nb_0_in", want_left=False) \
+        == "urban_nb_right"
+    assert controller._turn_successor("urban_sb_0_in", want_left=False) is None
+
+    sim = HeadlessSim(net, controller, dt=0.1, scenario="urban")
+    sim.add_vehicle("sb", [-5.4, 0.0, 60.0], "urban_sb_0_in", speed=10.0,
+                    goal=list(net.lane("urban_sb_0_out").end), maneuver="right")
+    light = controller.traffic.lights["urban_sb_0_in"]
+    assert light.state(0.0) == RED
+
+    for _ in range(300):
+        sim.step()
+        if light.state(sim.time) != RED:
+            break
+        assert sim.vehicles["sb"].position[2] > 10.0, (
+            f"ran the red at t={sim.time:.1f}, "
+            f"z={sim.vehicles['sb'].position[2]:.1f}")
+
+
 # ---- intersection reservation -------------------------------------------- #
 def test_single_vehicle_no_yield():
     mgr = IntersectionManager(center=[0, 0, 0], radius=6.0)

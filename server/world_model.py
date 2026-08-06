@@ -144,6 +144,7 @@ class LaneNetwork:
         self.scenario = scenario
         self.lanes: dict[str, Lane] = {lane.id: lane for lane in lanes}
         self._blocked: list[tuple[Vec3, float]] = []  # (position, radius)
+        self._predecessors: Optional[dict[str, list[str]]] = None  # built lazily
 
     # ---- construction ----------------------------------------------------- #
     @classmethod
@@ -210,6 +211,21 @@ class LaneNetwork:
     def lane_length(self, lane_id: str) -> float:
         lane = self.lanes.get(lane_id)
         return lane.length if lane else 0.0
+
+    def predecessors(self, lane_id: str) -> list[str]:
+        """Lanes that feed into ``lane_id`` — the reverse of ``neighbors``.
+
+        The graph only stores forward edges, but "who is about to arrive here?"
+        is a backwards question (merge reservation, upstream queue lookahead).
+        The index is built once and cached: the lane graph is static.
+        """
+        if self._predecessors is None:
+            index: dict[str, list[str]] = {}
+            for lane in self.lanes.values():
+                for nid in lane.next_lane_ids:
+                    index.setdefault(nid, []).append(lane.id)
+            self._predecessors = index
+        return list(self._predecessors.get(lane_id, []))
 
     def all_lane_ids(self) -> list[str]:
         return list(self.lanes.keys())

@@ -53,45 +53,177 @@ namespace V2X.EditorTools
         public static void BuildAllScenes()
         {
             EnsureDirectories();
-            BuildMainScene();
+            // Build the demo scenes first: the hub only lists scenes, but it
+            // cannot load one that never made it into Build Settings.
             BuildLkaScene();
             BuildHighwayScene();
             BuildUrbanScene();
+            BuildEmergencyAvoidanceScene();
+            BuildIntegratedCityScene();
+            BuildMainScene();
             EditorBuildSettings.scenes = new[]
             {
                 new EditorBuildSettingsScene($"{SceneDir}/Main.unity", true),
                 new EditorBuildSettingsScene($"{SceneDir}/LKA_Test.unity", true),
                 new EditorBuildSettingsScene($"{SceneDir}/Highway.unity", true),
                 new EditorBuildSettingsScene($"{SceneDir}/Urban.unity", true),
+                new EditorBuildSettingsScene($"{SceneDir}/EmergencyAvoidance.unity", true),
+                new EditorBuildSettingsScene($"{SceneDir}/IntegratedCity.unity", true),
             };
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             EditorSceneManager.OpenScene($"{SceneDir}/Main.unity");
-            Debug.Log("[V2XSceneBuilder] Built Main, LKA_Test, Highway, and Urban scenes.");
+            Debug.Log("[V2XSceneBuilder] Built the Main hub and all five demo scenes.");
         }
 
-        [MenuItem("V2X/Build Main Vertical Slice")]
+        /// <summary>Scene menu shown by the Main hub, in display order.</summary>
+        private static readonly HubSceneEntry[] HubEntries =
+        {
+            new()
+            {
+                sceneName = "LKA_Test",
+                title = "LKA_Test · 차선 유지 시험로",
+                summary = "일정 곡률의 단일 곡선 트랙. 다른 차량도 이벤트도 없이 " +
+                          "횡방향 제어기만 홀로 남겨 lateral / heading error를 읽는다.",
+                techniques =
+                    "· 횡방향 제어: Pure Pursuit / Stanley (씬 기본값 Stanley)\n" +
+                    "· Frenet 오차 계산 (lateral / heading)\n" +
+                    "· 종방향 제어: ACC 자유주행 구간\n" +
+                    "· 고정 CSV 로깅 스키마 → 속도별 RMS 오차 비교",
+                controls = "1·2·3 카메라 전환 / Esc 허브로",
+            },
+            new()
+            {
+                sceneName = "Highway",
+                title = "Highway · 고속도로 합류와 차선 변경",
+                summary = "3차선 본선 + 온램프. 램프 차량은 본선 중간(z=115)으로 " +
+                          "합류하므로, 중앙 서버가 시간 슬롯을 예약해 끼워 넣는다.",
+                techniques =
+                    "· V2X 합류 예약: ETA 기반 슬롯 탐색 → 램프 재타이밍 → " +
+                    "그래도 안 되면 본선 차량에 양보 지시\n" +
+                    "· 합류 차선 판정을 위상/기하로 도출 (차선 이름 무관)\n" +
+                    "· 중간 합류 접합을 반영한 선행차 탐색 + ACC\n" +
+                    "· 차선 변경 갭 수용 판정 (lead/lag 시간 간격)\n" +
+                    "· A* 전역 경로 + 낙하물 이벤트 재계획",
+                controls = "Q/E 차선 변경 · R 자동 변경 토글 · 1·2·3 카메라 / Esc 허브로",
+            },
+            new()
+            {
+                sceneName = "Urban",
+                title = "Urban · 신호 교차로와 보호 좌회전",
+                summary = "4방향 8접근로 신호 교차로. 직진·좌회전·우회전을 UI로 " +
+                          "고르면 서버가 신호·갭·보행자를 모두 확인하고 명령한다.",
+                techniques =
+                    "· 고정 주기 신호 (60 s, 보행 페이즈 포함) — 서버가 집행\n" +
+                    "· 보호 좌회전 정책: 차선 변경 → 정지선 → 화살표 → 교차 → 정렬,\n" +
+                    "  매 틱 재평가하며 늦은 갭 실패 시 직진으로 안전 취소\n" +
+                    "· 한국식 우회전: 적신호 완전 정지 후 보행자/교통 양보하며 진행\n" +
+                    "· 보행자 횡단 예측 및 회전 주행 통로 침범 판정\n" +
+                    "· 교차로 충돌 예약 + 신호로 관리되는 충돌 필터링",
+                controls = "직진/좌회전/우회전 토글 · 1·2·3 카메라 / Esc 허브로",
+            },
+            new()
+            {
+                sceneName = "EmergencyAvoidance",
+                title = "EmergencyAvoidance · 돌발 장애물과 긴급차 회피",
+                summary = "직선 4차선 실험로. 주행 중 낙하물이 떨어지고 뒤에서 " +
+                          "긴급차가 접근한다. 전역 A* 대신 국부 샘플링 플래너가 " +
+                          "일시적으로 경로를 넘겨받는다.",
+                techniques =
+                    "· 코리도 제한 RRT / RRT* 국부 회피 (씬에서 실시간 전환)\n" +
+                    "· 회피 상태기: 감지 → 계획 → 횡방향 이탈 → 복귀 계획 → 합류\n" +
+                    "· 경로 후처리: 단축(shortcut) + 재샘플링 + 최대 조향각 검증\n" +
+                    "· 긴급차 우선: 최우측 갓길로 대피 후 통과 확인 뒤 복귀\n" +
+                    "· 계획 시간 / 최소 여유거리 실시간 계측",
+                controls = "4 낙하물 · 5 긴급차 · 6 RRT↔RRT* · 0 리셋 / Esc 허브로",
+            },
+            new()
+            {
+                sceneName = "IntegratedCity",
+                title = "IntegratedCity · 통합 10분 시나리오",
+                summary = "교차로 → 대로 → 순환로로 이어지는 통합 코스. " +
+                          "위 씬들의 요소가 한 주행에 모두 등장한다.",
+                techniques =
+                    "· 앞의 모든 요소 + 갓길↔대로 테이퍼 합류\n" +
+                    "· 이름이 아닌 위상으로 합류 지점을 찾아 예약 적용\n" +
+                    "· 서로 다른 도로 계열(도심/간선)을 가로지르는 회피 코리도\n" +
+                    "· 다차량 동시 주행 중 전역 상황 인지 및 충돌 예측",
+                controls = "시나리오 디렉터가 이벤트를 자동 진행 · 1·2·3 카메라 / Esc 허브로",
+            },
+        };
+
+        [MenuItem("V2X/Build Main Hub")]
         public static void BuildMainScene()
         {
             EnsureDirectories();
             NewScene("Main", out var camera);
+            camera.transform.position = new Vector3(0f, 2f, -10f);
+            camera.transform.rotation = Quaternion.identity;
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(.05f, .07f, .10f);
 
-            var roadSurface = CreateCube("Road", new Vector3(0f, -0.1f, 70f),
-                new Vector3(7f, 0.2f, 150f), Color.black);
-            roadSurface.transform.SetAsFirstSibling();
-            CreateLaneMarkers(0f, 0f, 140f);
+            var canvasGo = new GameObject("Hub Canvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            canvasGo.AddComponent<GraphicRaycaster>();
+            if (UnityEngine.Object.FindFirstObjectByType<EventSystem>() == null)
+            {
+                var eventGo = new GameObject("EventSystem");
+                eventGo.AddComponent<EventSystem>();
+                eventGo.AddComponent<InputSystemUIInputModule>();
+            }
 
-            var lane = CreateLane("main_l0", 13.9f,
-                Points(new Vector3(0f, 0f, 0f), new Vector3(0f, 0f, 140f), 8));
-            var vehicle = CreateVehicle("ego", new Vector3(0f, 0.5f, 2f),
-                new Vector3(0f, 0f, 132f), Color.cyan);
-            WireSimulation("highway", new[] { lane }, new[] { vehicle }, Array.Empty<DynamicObjectAgent>());
-            CreateCameraSystem(camera, vehicle, false,
-                new Vector3(45f, 85f, -20f), new Vector3(0f, 0f, 70f));
+            CreateHubLabel(canvas.transform, "Hub Title",
+                "중앙 집중형 V2X 자율주행 시뮬레이터",
+                new Vector2(0f, -70f), new Vector2(1400f, 52f), 38,
+                TextAnchor.MiddleCenter, anchorY: 1f);
+            CreateHubLabel(canvas.transform, "Hub Subtitle",
+                "완전한 V2X 세계를 가정한 중앙 서버가 계획하고, Unity가 그린다. " +
+                "실행할 씬을 고르세요.",
+                new Vector2(0f, -122f), new Vector2(1400f, 34f), 20,
+                TextAnchor.MiddleCenter, anchorY: 1f);
 
-            camera.transform.position = new Vector3(0f, 20f, -22f);
-            camera.transform.rotation = Quaternion.Euler(28f, 0f, 0f);
-            Save("Main");
+            // Left: the menu. Right: what the selected scene actually exercises.
+            var buttons = new Button[HubEntries.Length];
+            for (int i = 0; i < HubEntries.Length; i++)
+            {
+                buttons[i] = CreateHubMenuButton(canvas.transform,
+                    $"{i + 1}.  {HubEntries[i].sceneName}",
+                    new Vector2(-620f, 120f - i * 66f));
+            }
+
+            var panel = CreateHubPanel(canvas.transform, "Detail Panel",
+                new Vector2(300f, -10f), new Vector2(900f, 420f));
+            var title = CreateHubLabel(panel, "Detail Title", "",
+                new Vector2(0f, 168f), new Vector2(840f, 40f), 26, TextAnchor.MiddleLeft);
+            var summary = CreateHubLabel(panel, "Detail Summary", "",
+                new Vector2(0f, 108f), new Vector2(840f, 76f), 19, TextAnchor.UpperLeft);
+            var techniques = CreateHubLabel(panel, "Detail Techniques", "",
+                new Vector2(0f, -24f), new Vector2(840f, 180f), 18, TextAnchor.UpperLeft);
+            var controls = CreateHubLabel(panel, "Detail Controls", "",
+                new Vector2(0f, -156f), new Vector2(840f, 44f), 17, TextAnchor.UpperLeft);
+
+            var run = CreateButton(canvas.transform, "▶  이 씬 실행 (Enter)",
+                new Vector2(0f, 96f), 320f);
+            var status = CreateHubLabel(canvas.transform, "Hub Status", "",
+                new Vector2(0f, 50f), new Vector2(1400f, 30f), 16,
+                TextAnchor.MiddleCenter, anchorY: 0f);
+
+            var hub = canvasGo.AddComponent<SceneHubController>();
+            hub.entries = HubEntries;
+            hub.sceneButtons = buttons;
+            hub.runButton = run;
+            hub.titleText = title;
+            hub.summaryText = summary;
+            hub.techniquesText = techniques;
+            hub.controlsText = controls;
+            hub.statusText = status;
+
+            // No Lane components here: the hub is a menu, not a road.
+            Save("Main", exportLanes: false);
         }
 
         [MenuItem("V2X/Build LKA Test Scene")]
@@ -283,7 +415,15 @@ namespace V2X.EditorTools
                 throw new InvalidOperationException("Urban northbound route is incomplete.");
 
             var boulevardPoints = Points(new Vector3(5.4f, 0f, 70f), new Vector3(5.4f, 0f, 360f), 25);
-            var escapePoints = Points(new Vector3(9f, 0f, 70f), new Vector3(9f, 0f, 360f), 25);
+            // The shoulder is an emergency escape lane, not a second through
+            // lane. It has to taper back onto the boulevard so that it ENDS
+            // where the eastbound connector starts; a shoulder held at x=9 all
+            // the way to z=360 makes the escape->turn lane-graph edge join 3.6 m
+            // off the connector centreline, and any route stitched through it
+            // steps sideways at the join.
+            var escapePoints = Points(new Vector3(9f, 0f, 70f), new Vector3(9f, 0f, 320f), 21);
+            escapePoints.AddRange(BezierPoints(new Vector3(9f, 0f, 320f),
+                new Vector3(9f, 0f, 346f), new Vector3(5.4f, 0f, 360f), 5).GetRange(1, 4));
             var turnEastPoints = BezierPoints(new Vector3(5.4f, 0f, 360f),
                 new Vector3(5.4f, 0f, 430f), new Vector3(80f, 0f, 430f), 18);
             var turnSouthPoints = BezierPoints(new Vector3(80f, 0f, 430f),
@@ -810,9 +950,11 @@ namespace V2X.EditorTools
             CreateRoadRibbon("Outer Turn North", turnNorth, 10f, asphalt);
             CreateRoadRibbon("Urban Return Avenue", cityReturn, 10f, asphalt);
 
-            CreateDashedLine(7.2f, 70f, 360f);
+            // Divider and shoulder edge stop at the taper start (z=320); the
+            // merge taper itself is deliberately unmarked, as on a real road.
+            CreateDashedLine(7.2f, 70f, 320f);
             CreateSolidLineZ("Boulevard Left Edge", 3.5f, 70f, 360f, Color.white, .16f);
-            CreateSolidLineZ("Boulevard Shoulder Edge", 10.8f, 70f, 360f,
+            CreateSolidLineZ("Boulevard Shoulder Edge", 10.8f, 70f, 320f,
                 new Color(1f, .78f, .08f), .18f);
             foreach (var route in new[] { turnEast, turnSouth, south, turnWest, west, turnNorth, cityReturn })
                 CreatePolylineEdges("Outer Loop Edge", route, 4.65f, Color.white);
@@ -960,12 +1102,6 @@ namespace V2X.EditorTools
             UnityEventTools.AddPersistentListener(reset.onClick, scenario.ResetScenario);
         }
 
-        private static void CreateLaneMarkers(float x, float z0, float z1)
-        {
-            CreateDashedLine(x - 3.5f, z0, z1);
-            CreateDashedLine(x + 3.5f, z0, z1);
-        }
-
         private static void CreateDashedLine(float x, float z0, float z1)
         {
             var root = new GameObject($"Lane Marking {x:0.0}");
@@ -1085,9 +1221,9 @@ namespace V2X.EditorTools
         {
             var systemGo = new GameObject("Traffic Light System");
             var system = systemGo.AddComponent<TrafficLightSystem>();
-            system.greenTime = 12f;
-            system.yellowTime = 3f;
-            system.redTime = 31f;
+            // Phase timings are not configured here: they must match the
+            // server's plan, so they live in TrafficLightSystem next to the
+            // comment that says so.
             system.heads = new[]
             {
                 CreateSignalGantry("NS South", new Vector3(10.5f, 0f, -18f), 0f),
@@ -1219,8 +1355,24 @@ namespace V2X.EditorTools
                 lane.automaticButton = automatic;
                 lane.automaticInterval = 12f;
             }
+            CreateReturnToHubControl(canvas);
             CreateRetryPanel(canvas, target);
             return canvas;
+        }
+
+        /// <summary>Every demo scene is entered from the hub, so every demo
+        /// scene gets a way back out of it.</summary>
+        private static void CreateReturnToHubControl(Canvas canvas)
+        {
+            var button = CreateButton(canvas.transform, "← 허브 (Esc)",
+                Vector2.zero, 150f);
+            var rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(16f, -16f);
+            var hub = canvas.gameObject.AddComponent<ReturnToHubController>();
+            hub.hubSceneName = "Main";
+            hub.returnButton = button;
         }
 
         private static void CreateRetryPanel(Canvas canvas, VehicleController target)
@@ -1362,6 +1514,65 @@ namespace V2X.EditorTools
             return camera;
         }
 
+        // ---- Main hub widgets ------------------------------------------- //
+        /// <param name="anchorY">0 = pinned to the bottom edge, .5 = centre,
+        /// 1 = pinned to the top edge. Explicit so the layout survives a
+        /// window resize instead of drifting.</param>
+        private static Text CreateHubLabel(
+            Transform parent, string name, string content, Vector2 position,
+            Vector2 size, int fontSize, TextAnchor anchor, float anchorY = .5f)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = rect.anchorMax = new Vector2(.5f, anchorY);
+            rect.pivot = new Vector2(.5f, .5f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+            var text = go.AddComponent<Text>();
+            text.text = content;
+            text.alignment = anchor;
+            text.fontSize = fontSize;
+            text.color = new Color(.92f, .95f, 1f);
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            return text;
+        }
+
+        private static Transform CreateHubPanel(
+            Transform parent, string name, Vector2 position, Vector2 size)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = rect.anchorMax = new Vector2(.5f, .5f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+            var image = go.AddComponent<Image>();
+            image.color = new Color(.06f, .09f, .14f, .92f);
+            return go.transform;
+        }
+
+        private static Button CreateHubMenuButton(
+            Transform parent, string label, Vector2 position)
+        {
+            var button = CreateButton(parent, label, Vector2.zero, 380f);
+            var rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = rect.anchorMax = new Vector2(.5f, .5f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = new Vector2(380f, 54f);
+            var text = button.GetComponentInChildren<Text>();
+            if (text != null)
+            {
+                text.alignment = TextAnchor.MiddleLeft;
+                text.fontSize = 21;
+                var textRect = text.GetComponent<RectTransform>();
+                textRect.offsetMin = new Vector2(18f, 0f);
+            }
+            return button;
+        }
+
         private static Button CreateButton(
             Transform parent, string label, Vector2 position, float width = 120f)
         {
@@ -1486,12 +1697,31 @@ namespace V2X.EditorTools
             AssetDatabase.Refresh();
         }
 
-        private static void Save(string sceneName)
+        private static void Save(string sceneName, bool exportLanes = true)
         {
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
             if (!EditorSceneManager.SaveScene(SceneManager.GetActiveScene(), $"{SceneDir}/{sceneName}.unity"))
                 throw new InvalidOperationException($"Failed to save scene {sceneName}");
+            // A menu scene has no road; the exporter would throw on it, and any
+            // export left over from an earlier build would now be a lie.
+            if (!exportLanes)
+            {
+                DeleteStaleLaneExport(sceneName);
+                return;
+            }
             LaneNetworkExporter.ExportToDefaultLocation();
+        }
+
+        private static void DeleteStaleLaneExport(string sceneName)
+        {
+            string projectRoot = Directory.GetParent(Application.dataPath)?.Parent?.FullName;
+            if (projectRoot == null) return;
+            string export = Path.Combine(
+                projectRoot, "server", "scenarios", $"{sceneName}_lanes.json");
+            if (!File.Exists(export)) return;
+            File.Delete(export);
+            Debug.Log($"[V2XSceneBuilder] removed lane export for lane-less scene " +
+                      $"'{sceneName}': {export}");
         }
 
         private static void AddSceneToBuildSettings(string path)

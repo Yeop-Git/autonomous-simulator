@@ -45,6 +45,11 @@ LEFT_TURN_PEDESTRIAN_CORRIDOR = 3.0
 LEFT_TURN_CONFLICT_HORIZON = 35.0
 LEFT_TURN_ACCEPT_TIME_GAP = 1.25
 LANE_CHANGE_LEAD_PREVIEW = 2.0
+MERGE_UPSTREAM_HORIZON = 250.0  # m of mainline to watch upstream of a join
+MERGE_JOIN_EPS = 1.0            # m; beyond this a join is mid-lane, not end-to-start
+MERGE_PARALLEL_PROBE = 15.0     # m back from a shared junction to compare approaches
+MERGE_PARALLEL_SPAN = 8.0       # m; wider apart there and it is not one stream
+MERGE_PARALLEL_ANGLE = 30.0     # deg of heading disagreement allowed there
 URBAN_SIGNAL_PERIOD = 60.0
 PEDESTRIAN_PHASES = ((13.0, 21.0), (47.0, 55.0))
 
@@ -103,6 +108,7 @@ class CentralController:
         self.last_conflicts = []
         self.left_turn_diagnostics: dict[str, dict] = {}
         self._merge_speed_overrides: dict[str, float] = {}
+        self._merging_lanes: set[str] | None = None
         self._right_turn_stopped: set[str] = set()
         self._left_turn_commitments: dict[str, left_turn.LeftTurnCommitment] = {}
         self._left_turn_contexts: dict[str, _LeftTurnContext] = {}
@@ -147,6 +153,10 @@ class CentralController:
         """Ingest one StateMessage dict, return one CommandMessage dict."""
         if self.noise is not None:
             state = self.noise.apply(state)
+        incoming_tick = state.get("tick")
+        if (incoming_tick is not None and self.world.tick >= 0
+                and incoming_tick < self.world.tick):
+            self._forget_vehicle_state()
         self.world.update_from_state(state)
         self.left_turn_diagnostics = {}
         self._update_merge_reservations()
@@ -162,6 +172,24 @@ class CentralController:
             "tick": self.world.tick,
             "commands": commands,
         }
+
+    def _forget_vehicle_state(self) -> None:
+        """Drop everything remembered about individual vehicles.
+
+        A tick that goes backwards means Unity restarted its clock — the
+        avoidance scene's reset key reloads the scene, which rebuilds the
+        V2XClient and starts its counter over. Every per-vehicle memory here
+        then describes a world that no longer exists: the ego is back at the
+        start line with the hazard gone while this side still believes it is
+        mid-evasion, and hands it an escape path beginning 20 m ahead of where
+        it now stands. The lane network is static and stays.
+        """
+        self._routes.clear()
+        self._merge_speed_overrides.clear()
+        self._right_turn_stopped.clear()
+        self._left_turn_commitments.clear()
+        self._left_turn_contexts.clear()
+        self.local_avoidance.forget_all()
 
     # ------------------------------------------------------------------ #
     def _command_for(self, vehicle_id: str) -> dict:
@@ -453,11 +481,11 @@ class CentralController:
         if v.maneuver != "right":
             return regular_stop
 
-        rightmost = {
-            "urban_nb_0_in", "urban_sb_0_in",
-            "urban_eb_0_in", "urban_wb_0_in",
-        }
-        if v.current_lane not in rightmost:
+        # The rule belongs to a lane you can actually turn right *from*. That
+        # was a literal list of four Urban lane ids — three of which have no
+        # right-turn connector at all, while any other scene that authored one
+        # was silently excluded. Ask the lane graph instead.
+        if self._turn_successor(v.current_lane, want_left=False) is None:
             return regular_stop
         if not regular_stop:
             self._right_turn_stopped.discard(v.id)
@@ -712,27 +740,130 @@ class CentralController:
         phase = time % URBAN_SIGNAL_PERIOD
         return any(start <= phase < end for start, end in PEDESTRIAN_PHASES)
 
+    def merging_lane_ids(self) -> set[str]:
+        """Lanes whose traffic has to buy its way into another lane's stream.
+
+        Two topologies qualify, and neither is discoverable from a lane's name
+        — which is what this used to key off (``"ramp" in lane_id``), quietly
+        confining the whole reservation feature to the one scene that happened
+        to use that word:
+
+          * **mid-lane join** — the lane ends part-way along its successor, so
+            what it merges into is that successor's own upstream traffic. This
+            is an on-ramp (``hw_ramp`` joins ``hw_l2`` at arc 115).
+          * **side-by-side join** — a slower lane that runs alongside a faster
+            one and ends into the same point of the same successor: a shoulder
+            rejoining a boulevard (``city_boulevard_escape`` into
+            ``city_turn_east``), or a ramp meeting the mainline at a segment
+            boundary. Only the slower lane reserves; the faster one is the
+            mainline being merged into.
+
+        Intersection turn connectors also share an exit lane, but they arrive
+        from somewhere else entirely — a short way back they are neither close
+        to nor aligned with the through lane, which is what ``_runs_alongside``
+        tests. Signals, not reservations, separate those.
+        """
+        if self._merging_lanes is not None:
+            return self._merging_lanes
+        network = self.world.network
+        merging: set[str] = set()
+        for lane in network.lanes.values():
+            for successor_id in lane.next_lane_ids:
+                successor = network.lane(successor_id)
+                if successor is None:
+                    continue
+                entry = successor.closest_point(lane.end)[2]
+                if entry > MERGE_JOIN_EPS:
+                    merging.add(lane.id)
+                    break
+                siblings = (network.lane(pid)
+                            for pid in network.predecessors(successor_id)
+                            if pid != lane.id)
+                if any(s is not None
+                       and s.speed_limit > lane.speed_limit
+                       and abs(successor.closest_point(s.end)[2] - entry)
+                       <= MERGE_JOIN_EPS
+                       and self._runs_alongside(lane, s)
+                       for s in siblings):
+                    merging.add(lane.id)
+                    break
+        self._merging_lanes = merging
+        return merging
+
+    @classmethod
+    def _runs_alongside(cls, lane, other) -> bool:
+        """Do two lanes approach their shared junction as parallel streams?
+
+        Sampled a short way back from both ends: a merging pair is close and
+        aligned there (that is what makes it a merge), a turn connector and the
+        through lane it exits onto are neither.
+        """
+        back = min(MERGE_PARALLEL_PROBE, lane.length, other.length)
+        if back <= 0.0:
+            return False
+        a = cls._point_at_arc(lane.centerline, lane.length - back)
+        b = cls._point_at_arc(other.centerline, other.length - back)
+        if dist_xz(a, b) > MERGE_PARALLEL_SPAN:
+            return False
+        delta = cls._heading_delta(lane.heading_at_arc(lane.length - back),
+                                   other.heading_at_arc(other.length - back))
+        return abs(delta) <= MERGE_PARALLEL_ANGLE
+
     def _update_merge_reservations(self) -> None:
-        """Reserve a V2X time slot for every active on-ramp vehicle."""
+        """Reserve a V2X time slot for every vehicle on a merging lane."""
         self._merge_speed_overrides = {}
+        merging = self.merging_lane_ids()
         ramps = [v for v in self.world.vehicles.values()
-                 if "ramp" in (v.current_lane or "").lower()]
+                 if v.current_lane in merging]
         for ramp_vehicle in ramps:
             ramp_lane = self.world.network.lane(ramp_vehicle.current_lane)
             if ramp_lane is None:
                 continue
             merge_point = list(ramp_lane.end)
-            successor_ids = set(ramp_lane.next_lane_ids)
+            mainline_ids = self._mainline_lanes(ramp_lane)
             mainline = [v for v in self.world.vehicles.values()
                         if v.id != ramp_vehicle.id
-                        and (v.current_lane in successor_ids
-                             or v.current_lane == "hw_l2")]
-            plan = merge.plan_merge(ramp_vehicle, mainline, merge_point)
+                        and v.current_lane in mainline_ids]
+            # Plan against the speed the ramp car is *meant* to hold, not the
+            # one it happens to have: a reservation derived from the current
+            # speed pins a stopped ramp car at 0 forever.
+            plan = merge.plan_merge(
+                ramp_vehicle, mainline, merge_point,
+                desired_speed=self._lane_speed(ramp_vehicle.current_lane))
             self._merge_speed_overrides[ramp_vehicle.id] = max(
                 0.0, plan.ramp_target_speed)
             if plan.yield_vehicle and plan.yield_target_speed is not None:
                 self._merge_speed_overrides[plan.yield_vehicle] = max(
                     0.0, plan.yield_target_speed)
+
+    def _mainline_lanes(self, ramp_lane) -> set[str]:
+        """Lanes whose traffic contends for ``ramp_lane``'s merge point.
+
+        The lanes the ramp feeds into, plus however much road drains into them
+        from upstream — a mainline split into segments puts the cars that are
+        seconds from the join on a *predecessor* of the joined lane, and those
+        are exactly the ones the reservation must see. Walking back stops at
+        ``MERGE_UPSTREAM_HORIZON`` so a road that merely shares a distant
+        ancestor is not mistaken for approaching traffic, and at any other
+        merging lane, whose cars are merging rather than being merged into.
+        """
+        network = self.world.network
+        merging = self.merging_lane_ids()
+        mainline: set[str] = set()
+        # (lane id, metres of road between that lane's end and the merge point)
+        frontier = [(lid, 0.0) for lid in ramp_lane.next_lane_ids]
+        while frontier:
+            lane_id, upstream = frontier.pop()
+            if lane_id in mainline or lane_id == ramp_lane.id:
+                continue
+            if lane_id in merging:
+                continue
+            mainline.add(lane_id)
+            if upstream >= MERGE_UPSTREAM_HORIZON:
+                continue
+            for pid in network.predecessors(lane_id):
+                frontier.append((pid, upstream + network.lane_length(pid)))
+        return mainline
 
     def _lane_change_path(self, v, target_lane_id: str,
                           distance: float = 32.0,
@@ -930,8 +1061,51 @@ class CentralController:
                 continue
             if self._traffic_conflict_is_managed(vehicle_id, other):
                 continue
+            if self._breach_is_standing(c):
+                continue
             best = min(best, c.ttc)
         return best
+
+    def _mover(self, mover_id: str):
+        return (self.world.vehicles.get(mover_id)
+                or self.world.objects.get(mover_id))
+
+    def _breach_is_standing(self, conflict) -> bool:
+        """True for a safety breach that braking cannot improve.
+
+        ``time_to_breach`` reports 0 s for a pair already inside the safety
+        radius, which is right while they are closing. For a pair that is *not*
+        closing — both at rest, or running parallel — that zero is a trap: both
+        vehicles read it as EmergencyBraking, both are commanded to zero, the
+        separation never changes, and the emergency never clears. On the Highway
+        export a ramp car that stops short of the join sits ~2 m from the
+        mainline car beside it in the taper, and the pair (plus everything
+        queued behind it) stands there for the rest of the run.
+        """
+        if conflict.ttc > 0.0:
+            return False
+        a, b = self._mover(conflict.a_id), self._mover(conflict.b_id)
+        if a is None or b is None:
+            return False
+        rpx, rpz = a.position[0] - b.position[0], a.position[2] - b.position[2]
+        rvx = a.velocity[0] - b.velocity[0]
+        rvz = a.velocity[2] - b.velocity[2]
+        return rpx * rvx + rpz * rvz >= 0.0
+
+    def _is_intersection_lane(self, lane_id: str | None) -> bool:
+        """Is ``lane_id`` past a stop line, i.e. inside the junction box?
+
+        Any lane a signalized approach feeds into is. This was a substring test
+        for ``_straight`` / ``_left`` / ``_right``, which reads the scene's
+        naming rather than its shape: on the EmergencyAvoidance export it
+        classified the plain travel lanes ``ea_left`` and ``ea_right`` as
+        intersection interior.
+        """
+        if not lane_id:
+            return False
+        return any(lane_id in lane.next_lane_ids
+                   for approach_id in self.traffic.lights
+                   if (lane := self.world.network.lane(approach_id)) is not None)
 
     def _traffic_conflict_is_managed(self, ego_id: str, other_id: str) -> bool:
         """A green approach need not emergency-brake for a red approach that
@@ -940,8 +1114,7 @@ class CentralController:
         other = self.world.vehicles.get(other_id)
         if ego is None or other is None:
             return False
-        ego_in_intersection = any(token in (ego.current_lane or "")
-                                  for token in ("_straight", "_left", "_right"))
+        ego_in_intersection = self._is_intersection_lane(ego.current_lane)
         if ego.current_lane not in self.traffic.lights and not ego_in_intersection:
             return False
         if other.current_lane not in self.traffic.lights:
