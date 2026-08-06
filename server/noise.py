@@ -6,8 +6,17 @@ optionally degrade the state the server sees BEFORE it decides. Three modes:
   * ``full``  — perfect information (identity transform).
   * ``noisy`` — additive Gaussian noise on positions and velocities, modelling
     imperfect V2X estimates.
-  * ``local`` — each report is dropped beyond a sensing radius from a chosen
-    ego/reference point, modelling fall-back to on-board (local) sensing.
+  * ``local`` — each report is dropped beyond a sensing radius of a reference
+    point, modelling fall-back to a single local sensor.
+
+``local`` is a *shared* view, not a per-vehicle one: one filtered world is what
+the whole server sees. A genuine per-vehicle sensing model would have to filter
+once per ego, which the central controller — which decides for every vehicle
+from one snapshot — cannot express. Read it as one roadside unit, and keep its
+reference point fixed: an earlier version fell back to the centroid of the
+fleet, which drifts as vehicles spread out, so cars flickered in and out of view
+for *everyone* including the car right behind them. On the Highway scene that
+alone was enough to rear-end the mainline at 0.01 m.
 
 Implemented as a pure transform on a schema-shaped StateMessage *dict*, so it
 slots in front of ``CentralController.step`` (or the headless sim) without
@@ -26,6 +35,7 @@ class NoiseConfig:
     pos_sigma: float = 0.5        # m, stddev of position noise (noisy)
     vel_sigma: float = 0.3        # m/s, stddev of velocity noise (noisy)
     sensing_radius: float = 60.0  # m, visibility radius (local)
+    reference: tuple[float, float, float] = (0.0, 0.0, 0.0)  # local sensor site
     seed: int = 0
 
 
@@ -59,9 +69,10 @@ class NoiseModel:
     def _local(self, state: dict, ego_id: str | None) -> dict:
         out = _shallow_copy_state(state)
         ego = _find_vehicle(out["vehicles"], ego_id) if ego_id else None
-        center = ego["position"] if ego else _centroid(out["vehicles"])
-        if center is None:
-            return out
+        # A named ego sees from where it stands; otherwise the sensor sits at a
+        # fixed site. Never the fleet centroid — that moves, and a moving
+        # horizon makes vehicles blink in and out of the world.
+        center = ego["position"] if ego else list(self.config.reference)
         r = self.config.sensing_radius
         # keep the ego always; filter the rest by planar distance
         out["vehicles"] = [
@@ -91,13 +102,6 @@ def _find_vehicle(vehicles, vid):
         if v.get("id") == vid:
             return v
     return None
-
-
-def _centroid(vehicles):
-    if not vehicles:
-        return None
-    n = len(vehicles)
-    return [sum(v["position"][i] for v in vehicles) / n for i in range(3)]
 
 
 def _within(p, center, r) -> bool:

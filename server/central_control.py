@@ -53,6 +53,8 @@ MERGE_PARALLEL_ANGLE = 30.0     # deg of heading disagreement allowed there
 URBAN_SIGNAL_PERIOD = 60.0
 PEDESTRIAN_PHASES = ((13.0, 21.0), (47.0, 55.0))
 STANDSTILL_SPEED = 0.3  # m/s; below this a mover counts as stopped
+PARKED_SPEED = 0.5      # m/s; at or under this an object reads as parked
+PARKED_HOLD = 1.0       # s; keep that reading through a burst of jitter
 
 
 @dataclass
@@ -110,6 +112,7 @@ class CentralController:
         self.left_turn_diagnostics: dict[str, dict] = {}
         self._merge_speed_overrides: dict[str, float] = {}
         self._merging_lanes: set[str] | None = None
+        self._parked_until: dict[str, float] = {}
         self._right_turn_stopped: set[str] = set()
         self._left_turn_commitments: dict[str, left_turn.LeftTurnCommitment] = {}
         self._left_turn_contexts: dict[str, _LeftTurnContext] = {}
@@ -160,6 +163,7 @@ class CentralController:
             self._forget_vehicle_state()
         self.world.update_from_state(state)
         self.left_turn_diagnostics = {}
+        self._update_parked_objects()
         self._update_merge_reservations()
 
         # Central global situation awareness: predict conflicts across every
@@ -190,6 +194,7 @@ class CentralController:
         self._right_turn_stopped.clear()
         self._left_turn_commitments.clear()
         self._left_turn_contexts.clear()
+        self._parked_until.clear()
         self.local_avoidance.forget_all()
 
     # ------------------------------------------------------------------ #
@@ -483,6 +488,28 @@ class CentralController:
         cmd["target_speed"] = round(speed, 3)
         return cmd
 
+    def _update_parked_objects(self) -> None:
+        """Remember which objects are standing still, with some hysteresis.
+
+        Whether something counts as parked decides if ACC holds a gap to it,
+        and a bare threshold on the reported speed sits right on the noise
+        floor: under the noisy V2X mode (0.3 m/s of per-axis jitter) a
+        stationary crate reads as moving about half the time, so the leader
+        flickered in and out and the car went back to creeping and stopping.
+        Unity derives object velocity by differencing positions, so the same
+        jitter can arrive from a wobbling frame time. Latch the reading.
+        """
+        now = self.world.time
+        for obj in self.world.objects.values():
+            if obj.speed <= PARKED_SPEED:
+                self._parked_until[obj.id] = now + PARKED_HOLD
+        for object_id in list(self._parked_until):
+            if object_id not in self.world.objects:
+                del self._parked_until[object_id]
+
+    def _is_parked(self, obj) -> bool:
+        return self.world.time <= self._parked_until.get(obj.id, -math.inf)
+
     def _blockage_leader(self, v) -> Optional[Leader]:
         """Whatever is standing still in our lane ahead, as an ACC leader.
 
@@ -510,7 +537,7 @@ class CentralController:
             # *moving* object is crossing, and belongs to the collision
             # predictor — treating it as a stopped leader would both misjudge
             # the gap and excuse it from the TTC that triggers the brake.
-            if obj.speed > STANDSTILL_SPEED:
+            if not self._is_parked(obj):
                 continue
             dx = obj.position[0] - v.position[0]
             dz = obj.position[2] - v.position[2]
