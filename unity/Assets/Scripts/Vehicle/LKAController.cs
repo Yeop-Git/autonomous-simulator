@@ -53,7 +53,6 @@ namespace V2X.Vehicle
             float ld = lookaheadBase + lookaheadK * speed;
             Vector3 target = LookaheadPoint(pos, path, ld);
             Vector3 to = target - pos; to.y = 0f;
-            float headingRad = headingDeg * Mathf.Deg2Rad;
             // angle of target relative to vehicle heading
             float targetAngle = Mathf.Atan2(to.x, to.z);
             float alpha = Mathf.DeltaAngle(headingDeg, targetAngle * Mathf.Rad2Deg) * Mathf.Deg2Rad;

@@ -52,8 +52,7 @@ MERGE_PARALLEL_SPAN = 8.0       # m; wider apart there and it is not one stream
 MERGE_PARALLEL_ANGLE = 30.0     # deg of heading disagreement allowed there
 URBAN_SIGNAL_PERIOD = 60.0
 PEDESTRIAN_PHASES = ((13.0, 21.0), (47.0, 55.0))
-# Object types that block a lane outright, as opposed to crossing it.
-BLOCKAGE_TYPES = frozenset({"unexpected_obstacle", "static_obstacle"})
+STANDSTILL_SPEED = 0.3  # m/s; below this a mover counts as stopped
 
 
 @dataclass
@@ -485,7 +484,7 @@ class CentralController:
         return cmd
 
     def _blockage_leader(self, v) -> Optional[Leader]:
-        """A road blockage ahead in our lane, as something ACC can follow.
+        """Whatever is standing still in our lane ahead, as an ACC leader.
 
         ``find_leader`` only knows about vehicles, so a fallen crate was left
         entirely to the collision predictor: brake to a halt — and then, being
@@ -506,11 +505,12 @@ class CentralController:
         half_width = max(1.5, lane.width * 0.5)
         best: Optional[Leader] = None
         for obj in self.world.objects.values():
-            # Only something actually parked in the lane. A moving object is
-            # crossing it, and belongs to the collision predictor — treating it
-            # as a stopped leader would both misjudge the gap and excuse it
-            # from the TTC that triggers the brake.
-            if obj.type not in BLOCKAGE_TYPES or obj.speed > 0.5:
+            # Anything at rest in the lane blocks it, whatever it is: a fallen
+            # crate, a stalled car, a pedestrian who has stopped walking. A
+            # *moving* object is crossing, and belongs to the collision
+            # predictor — treating it as a stopped leader would both misjudge
+            # the gap and excuse it from the TTC that triggers the brake.
+            if obj.speed > STANDSTILL_SPEED:
                 continue
             dx = obj.position[0] - v.position[0]
             dz = obj.position[2] - v.position[2]
@@ -1131,23 +1131,27 @@ class CentralController:
         """True for a safety breach that braking cannot improve.
 
         ``time_to_breach`` reports 0 s for a pair already inside the safety
-        radius, which is right while they are closing. For a pair that is *not*
-        closing — both at rest, or running parallel — that zero is a trap: both
-        vehicles read it as EmergencyBraking, both are commanded to zero, the
-        separation never changes, and the emergency never clears. On the Highway
-        export a ramp car that stops short of the join sits ~2 m from the
-        mainline car beside it in the taper, and the pair (plus everything
-        queued behind it) stands there for the rest of the run.
+        radius, which is right while they are closing. For a pair that is *both
+        at rest* that zero is a trap: each reads it as EmergencyBraking, each is
+        commanded to zero, the separation never changes, and the emergency never
+        clears. On the Highway export a ramp car that stops short of the join
+        sits ~2 m from the mainline car beside it in the taper, and the pair —
+        plus everything queued behind it — stands there for the rest of the run.
+
+        Both must be at rest. Releasing the conflict whenever the pair merely
+        is not closing *right now* releases it the instant we come to a stop,
+        which lets us roll forward again into something that is still moving
+        past us: a car clearing the junction beside a pedestrian finishing their
+        crossing flipped between LaneKeeping and Stopping at 5 Hz, creeping
+        closer each cycle. While the other party is moving, the encounter is
+        live and the stop must hold.
         """
         if conflict.ttc > 0.0:
             return False
         a, b = self._mover(conflict.a_id), self._mover(conflict.b_id)
         if a is None or b is None:
             return False
-        rpx, rpz = a.position[0] - b.position[0], a.position[2] - b.position[2]
-        rvx = a.velocity[0] - b.velocity[0]
-        rvz = a.velocity[2] - b.velocity[2]
-        return rpx * rvx + rpz * rvz >= 0.0
+        return a.speed <= STANDSTILL_SPEED and b.speed <= STANDSTILL_SPEED
 
     def _is_intersection_lane(self, lane_id: str | None) -> bool:
         """Is ``lane_id`` past a stop line, i.e. inside the junction box?
