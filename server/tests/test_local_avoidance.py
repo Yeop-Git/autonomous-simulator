@@ -246,6 +246,50 @@ def test_blocked_rejoin_keeps_driving_the_escape_lane_instead_of_stuttering():
     assert sim.vehicles["ego"].position[2] > 200.0, "never got past the wall"
 
 
+def test_an_ambulance_is_still_yielded_to_mid_evasion():
+    """An avoidance manoeuvre owns the path and its pace -- not the right of way.
+
+    The manoeuvre's target speed used to be *assigned* over the emergency yield,
+    so a car steering around a crate held 8 m/s while an ambulance closed from
+    30 m behind and passed it, reacting not at all. And once the hazard was
+    behind, it would merge back across the ambulance's path to rejoin.
+    """
+    from headless_sim import HeadlessSim
+
+    net = _export("EmergencyAvoidance")
+    sim = HeadlessSim(net, CentralController(net, dt=0.1), dt=0.1,
+                      scenario="emergency_avoidance")
+    sim.add_vehicle("ego", [0.0, 0.0, 30.0], "ea_center", speed=20.0,
+                    goal=[0.0, 0.0, 320.0])
+
+    evading_speeds, rejoined_while_closing = [], False
+    for tick in range(300):
+        ego = sim.vehicles["ego"]
+        if tick == 30:
+            sim.add_object("cargo", "unexpected_obstacle",
+                           [0.0, 0.0, ego.position[2] + 48.0],
+                           [0.0, 0.0, 0.0], radius=1.25)
+        if tick == 55:  # closes in while the evasion is under way
+            sim.add_object("ambulance", "emergency_vehicle",
+                           [0.0, 0.0, ego.position[2] - 40.0],
+                           [0.0, 0.0, 31.0], radius=1.2)
+        behavior = sim.step()["commands"][0]["behavior"]
+        ambulance = sim.objects.get("ambulance")
+        if ambulance is None:
+            continue
+        still_behind = ambulance.position[2] < sim.vehicles["ego"].position[2]
+        if still_behind:
+            evading_speeds.append(sim.vehicles["ego"].speed)
+            if behavior in {"RejoinPlanning", "LaneRejoining"}:
+                rejoined_while_closing = True
+
+    assert evading_speeds, "the ambulance never got behind the ego"
+    assert min(evading_speeds) <= 3.5, (
+        f"never yielded: slowest was {min(evading_speeds):.2f} m/s")
+    assert not rejoined_while_closing, (
+        "merged back across the path of an ambulance that had not passed yet")
+
+
 def test_a_unity_scene_reset_abandons_the_in_progress_manoeuvre():
     """The avoidance scene's reset key reloads the scene.
 

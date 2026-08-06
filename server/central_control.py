@@ -474,7 +474,13 @@ class CentralController:
             cmd["turn_signal"] = avoidance.turn_signal
             if behavior != EMERGENCY_BRAKING:
                 cmd["behavior"] = avoidance.behavior
-                speed = avoidance.target_speed
+                # The manoeuvre owns the path and its pace, but yielding to an
+                # emergency vehicle is a constraint on top of it, not something
+                # it replaces. Assigning here used to discard the yield outright:
+                # a car evading an obstacle held 8 m/s while an ambulance closed
+                # from 30 m behind and passed it, reacting not at all.
+                speed = (avoidance.target_speed if yld is None
+                         else min(avoidance.target_speed, yld))
         cmd["target_speed"] = round(speed, 3)
         return cmd
 

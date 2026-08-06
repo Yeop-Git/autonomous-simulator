@@ -111,8 +111,12 @@ class LocalAvoidanceManager:
                     maneuver.phase = "Yielding"
                     maneuver.path = []
                     return self._decision(maneuver, vehicle, "Yielding", 0.5)
+                # An emergency vehicle closing from behind is a reason to
+                # stay out on the escape lane, not to merge back across its
+                # path just as it arrives.
                 if (self._source_is_behind(vehicle, world, maneuver.source_id)
-                        and world.time >= maneuver.rejoin_blocked_until):
+                        and world.time >= maneuver.rejoin_blocked_until
+                        and not self._emergency_approaching(vehicle, world)):
                     maneuver.phase = "RejoinPlanning"
                     maneuver.path = []
                     return self._decision(
@@ -149,7 +153,8 @@ class LocalAvoidanceManager:
                 if maneuver.clear_since is None:
                     maneuver.clear_since = world.time
                 elif (world.time - maneuver.clear_since >= 1.0
-                        and world.time >= maneuver.rejoin_blocked_until):
+                        and world.time >= maneuver.rejoin_blocked_until
+                        and not self._emergency_approaching(vehicle, world)):
                     maneuver.phase = "RejoinPlanning"
                     return self._decision(
                         maneuver, vehicle, "RejoinPlanning", 3.0)
@@ -184,6 +189,12 @@ class LocalAvoidanceManager:
             return self._decision(maneuver, vehicle, "LaneRejoining", 7.0)
 
         return None
+
+    @staticmethod
+    def _emergency_approaching(vehicle: DynamicVehicle,
+                               world: WorldModel) -> bool:
+        return emergency.approaching_emergency(
+            vehicle, world.objects.values(), radius=70.0) is not None
 
     def _trigger(self, vehicle: DynamicVehicle, world: WorldModel):
         ev = emergency.approaching_emergency(
