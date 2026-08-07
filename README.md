@@ -7,10 +7,11 @@
 Unity는 도로, 차량 운동, 시나리오 및 UI를 담당한다. Python 서버는 월드 모델, 경로
 계획, 행동 결정 및 차량별 제어 명령을 담당한다.
 
-![Main 허브와 주행 씬 선택 화면](docs/images/hero.png)
+![IntegratedCity 실제 주행 화면](docs/videos/integrated-city-demo.gif)
 
-[시스템 구성](#1-시스템-구성) · [기술 명세](#3-기술-명세) · [씬 구성](#4-씬-구성) ·
-[실험 결과](#5-실험-결과) · [검증](#6-검증-및-제한사항) · [실행 방법](#7-실행-방법)
+*IntegratedCity 실제 실행 화면. Python 중앙 서버에 연결한 Unity Game View를 캡처했다.*
+
+## 프로젝트 요약
 
 | 항목 | 현재 구성 |
 |---|---|
@@ -20,6 +21,15 @@ Unity는 도로, 차량 운동, 시나리오 및 UI를 담당한다. Python 서�
 | 통신 | WebSocket `localhost:8765`, JSON Schema Draft-07, 명목 25 Hz |
 | 검증 결과 | 테스트 259건 수집, 257 pass, 2 skip |
 | 계측 결과 | Python `step()` p50 0.06–0.74 ms, 최대 p95 1.40 ms |
+
+### 문서 안내
+
+| 구분 | 바로가기 |
+|---|---|
+| 설계 | [시스템 구성](#1-시스템-구성) · [통신 및 데이터 규약](#2-통신-및-데이터-규약) · [기술 명세](#3-기술-명세) |
+| 구현 | [씬 구성](#4-씬-구성) |
+| 결과 | [실험 결과](#5-실험-결과) · [검증 및 제한사항](#6-검증-및-제한사항) |
+| 사용 | [실행 방법](#7-실행-방법) · [저장소 구성](#8-저장소-구성) · [참고문헌](#9-참고문헌) |
 
 ## 1. 시스템 구성
 
@@ -154,8 +164,9 @@ RRT/RRT\*의 탐색 공간은 현재 차선, 인접 차선 및 후속 차선으�
 
 폰트 라이선스: [`unity/Assets/Fonts/Pretendard-LICENSE.txt`](unity/Assets/Fonts/Pretendard-LICENSE.txt)
 
-Main 허브는 실제 Unity 화면을 사용했다. 나머지 씬의 촬영 파일명, 카메라,
-이벤트 시점은 [`docs/images/README.md`](docs/images/README.md)에 정리했다.
+README 상단의 IntegratedCity 실행 GIF와 Main 허브 이미지는 실제 Unity Game View다.
+나머지 씬의 촬영 파일명, 카메라, 이벤트 시점은
+[`docs/images/README.md`](docs/images/README.md)에 정리했다.
 
 ## 5. 실험 결과
 
