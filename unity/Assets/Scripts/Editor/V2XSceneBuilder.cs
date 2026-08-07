@@ -105,7 +105,7 @@ namespace V2X.EditorTools
                     "· 중간 합류 접합을 반영한 선행차 탐색 + ACC\n" +
                     "· 차선 변경 갭 수용 판정 (lead/lag 시간 간격)\n" +
                     "· A* 전역 경로 + 낙하물 이벤트 재계획",
-                controls = "Q/E 차선 변경 · R 자동 변경 토글 · 1·2·3 카메라 / Esc 허브로",
+                controls = "Q/E 차선 변경 · 1·2·3 카메라 / Esc 허브로",
             },
             new()
             {
@@ -1349,14 +1349,11 @@ namespace V2X.EditorTools
             {
                 var left = CreateButton(canvas.transform, "Q  ← 차선", new Vector2(-310f, 105f), 150f);
                 var right = CreateButton(canvas.transform, "차선 →  E", new Vector2(310f, 105f), 150f);
-                var automatic = CreateButton(canvas.transform, "R 자동 ON", new Vector2(0f, 105f), 150f);
                 var lane = canvasGo.AddComponent<HighwayLaneChangeController>();
                 lane.ego = target;
                 lane.road = UnityEngine.Object.FindFirstObjectByType<RoadNetworkManager>();
                 lane.leftButton = left;
                 lane.rightButton = right;
-                lane.automaticButton = automatic;
-                lane.automaticInterval = 12f;
             }
             CreateReturnToHubControl(canvas);
             CreateRetryPanel(canvas, target);

@@ -259,7 +259,7 @@ MonoBehaviour:
       \uCC28\uC120 \uBCC0\uACBD \uAC2D \uC218\uC6A9 \uD310\uC815 (lead/lag \uC2DC\uAC04
       \uAC04\uACA9)\n\xB7 A* \uC804\uC5ED \uACBD\uB85C + \uB099\uD558\uBB3C \uC774\uBCA4\uD2B8
       \uC7AC\uACC4\uD68D"
-    controls: "Q/E \uCC28\uC120 \uBCC0\uACBD \xB7 R \uC790\uB3D9 \uBCC0\uACBD \uD1A0\uAE00
+    controls: "Q/E \uCC28\uC120 \uBCC0\uACBD
       \xB7 1\xB72\xB73 \uCE74\uBA54\uB77C / Esc \uD5C8\uBE0C\uB85C"
   - sceneName: Urban
     title: "Urban \xB7 \uC2E0\uD638 \uAD50\uCC28\uB85C\uC640 \uBCF4\uD638 \uC88C\uD68C\uC804"
