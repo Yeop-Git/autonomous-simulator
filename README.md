@@ -159,8 +159,9 @@ RRT/RRT\*의 탐색 공간은 현재 차선, 인접 차선 및 후속 차선으�
 
 #### LKA_Test — 곡선 차선 추종
 
-Stanley 제어기가 `lka_curve`를 추종하며 초기 정지 상태에서 가속한다. HUD에서
-서버 연결, 적용 tick, 횡오차를 함께 확인할 수 있다.
+Stanley 제어 차량이 전경 시점에서 `lka_curve`의 중앙선을 따라 곡선 구간을
+주행한다. 방향 보정이 끝난 구간만 담았으며 HUD에서 적용 tick과 횡오차를
+확인할 수 있다.
 
 ![LKA_Test 곡선 차선 추종](docs/videos/lka-test-demo.gif)
 

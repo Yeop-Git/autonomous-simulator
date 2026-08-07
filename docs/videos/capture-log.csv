@@ -1,6 +1,6 @@
 file,scene,start_tick,end_tick,server_log,recorded_at
 integrated-city-demo.gif,IntegratedCity,2254,3970,not_preserved,2026-08-07T16:09:28+09:00
-lka-test-demo.gif,LKA_Test,22,248,not_preserved,2026-08-07T16:42:51+09:00
+lka-test-demo.gif,LKA_Test,300,728,not_preserved,2026-08-07T17:50:58+09:00
 highway-merge-lane-change-demo.gif,Highway,22,434,not_preserved,2026-08-07T16:49:23+09:00
 urban-straight-demo.gif,Urban,108,1682,not_preserved,2026-08-07T16:51:45+09:00
 urban-left-demo.gif,Urban,108,2270,not_preserved,2026-08-07T16:52:51+09:00

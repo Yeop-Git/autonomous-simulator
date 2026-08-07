@@ -7,7 +7,7 @@
 
 | 파일 | 장면 | 확인 기능 |
 |---|---|---|
-| `docs/videos/lka-test-demo.gif` | LKA_Test | 곡선 차선 추종, 횡오차·tick HUD |
+| `docs/videos/lka-test-demo.gif` | LKA_Test | 전경에서 확인하는 곡선 차선 추종, 횡오차·tick HUD |
 | `docs/videos/highway-merge-lane-change-demo.gif` | Highway | 합류 차량 방향 차선 변경, gap acceptance |
 | `docs/videos/urban-straight-demo.gif` | Urban | 신호 대기 후 직진 통과 |
 | `docs/videos/urban-left-demo.gif` | Urban | 좌회전 차선 진입, 보호 화살표 대기, 좌회전 |
@@ -30,7 +30,8 @@ Play Mode 진입 직후 Game View 프레임과 `tick`, 행동 상태, 차선, �
 
 Highway 영상은 합류 차량을 24 m 선행시킨 안전 간격 초기조건에서 우측 차선 변경을
 요청했다. Urban 영상은 60 s 신호 주기를 짧게 확인할 수 있도록 2.5–3배속으로
-촬영했다. 다른 영상은 기본 시간 배율을 사용했다.
+촬영했다. LKA 영상은 전경 카메라에서 초기 방향 보정 이후 프레임만 사용했다.
+다른 영상은 기본 시간 배율을 사용했다.
 
 ## 정지 화면 파일명
 
