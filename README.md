@@ -152,7 +152,66 @@ RRT/RRT\*의 탐색 공간은 현재 차선, 인접 차선 및 후속 차선으�
 
 모든 씬에서 `Esc`나 우측 상단 버튼으로 Main에 복귀할 수 있다.
 
-### 4.1 UI 규격
+### 4.1 기능 시연
+
+아래 GIF는 Python 서버에 연결한 Unity Game View를 직접 캡처했다. 재생 속도와
+프레임 간격은 화면 설명을 위한 값이며, 성능 수치는 §5의 원자료를 기준으로 한다.
+
+#### LKA_Test — 곡선 차선 추종
+
+Stanley 제어기가 `lka_curve`를 추종하며 초기 정지 상태에서 가속한다. HUD에서
+서버 연결, 적용 tick, 횡오차를 함께 확인할 수 있다.
+
+![LKA_Test 곡선 차선 추종](docs/videos/lka-test-demo.gif)
+
+#### Highway — 합류 차량 방향 차선 변경
+
+`car_0`에 온램프가 접속하는 우측 차선 `hw_l2`로 변경을 요청했다. 촬영 시 합류
+차량을 24 m 선행시켜 안전 간격을 확보했으며, 중앙 서버의 gap acceptance 이후
+`LaneChanging`으로 전환하고 우측 차선에서 합류 차량을 추종한다.
+
+![Highway 합류 차량 방향 차선 변경](docs/videos/highway-merge-lane-change-demo.gif)
+
+#### Urban — 직진
+
+남북 신호가 적색인 동안 정지선에서 대기한 뒤 녹색에 선행 차량을 따라
+`urban_nb_0_straight` 커넥터를 통과한다.
+
+![Urban 직진 전략](docs/videos/urban-straight-demo.gif)
+
+#### Urban — 보호 좌회전
+
+좌회전 차선으로 이동한 뒤 보호 화살표가 열릴 때까지 대기하고
+`urban_nb_left` 커넥터에 진입한다.
+
+![Urban 보호 좌회전 전략](docs/videos/urban-left-demo.gif)
+
+#### Urban — 우회전
+
+적신호에서 정지·양보한 뒤 교차 교통 간격을 확인하고 `urban_eb_0_out`으로
+진출한다. Urban 세 영상은 신호 주기를 짧게 확인할 수 있도록 2.5–3배속으로
+캡처했다.
+
+![Urban 우회전 전략](docs/videos/urban-right-demo.gif)
+
+#### EmergencyAvoidance — 낙하물 회피와 긴급차 양보
+
+낙하물 투입 후 `LateralEvading`으로 우측 회피하고, 후방 긴급차 접근 시
+`EmergencyBraking`을 거쳐 `LaneRejoining`으로 원 차선에 복귀한다.
+
+![EmergencyAvoidance 낙하물 회피와 긴급차 양보](docs/videos/emergency-avoidance-demo.gif)
+
+#### IntegratedCity — 통합 시나리오
+
+교차로, 순환 대로, A\* 전역 경로, RRT 국부 회피 및 이벤트 구간을 연속 주행한다.
+
+![IntegratedCity 통합 시나리오](docs/videos/integrated-city-demo.gif)
+
+촬영 tick과 파일 정보는 [`docs/videos/capture-log.csv`](docs/videos/capture-log.csv)에
+기록했다. 동일한 촬영은
+[`ReadmeCaptureTool.cs`](unity/Assets/Scripts/Editor/ReadmeCaptureTool.cs)로 재생성할 수 있다.
+
+### 4.2 UI 규격
 
 | 항목 | 값 |
 |---|---|
@@ -164,8 +223,7 @@ RRT/RRT\*의 탐색 공간은 현재 차선, 인접 차선 및 후속 차선으�
 
 폰트 라이선스: [`unity/Assets/Fonts/Pretendard-LICENSE.txt`](unity/Assets/Fonts/Pretendard-LICENSE.txt)
 
-README 상단의 IntegratedCity 실행 GIF와 Main 허브 이미지는 실제 Unity Game View다.
-나머지 씬의 촬영 파일명, 카메라, 이벤트 시점은
+영상 촬영 조건과 정지 화면 파일명은
 [`docs/images/README.md`](docs/images/README.md)에 정리했다.
 
 ## 5. 실험 결과
