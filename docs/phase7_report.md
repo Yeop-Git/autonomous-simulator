@@ -1,9 +1,14 @@
 # Phase 7 구현 보고서 — 경로탐색 알고리즘 비교 (A\* / RRT / RRT\*)
 
+> **역사적 스냅샷.** 이 문서는 2026-07-02 당시 Phase 7 결과를 보존한다. 현재 테스트
+> 수, 실행 환경, 통계 해석과 운용 결론은 루트 `README.md` §11–13 및
+> `experiments/results/README.md`를 우선한다. 특히 “20대”는 동시 차량이 아니라 순차
+> 독립 질의 묶음이며, 아래 벽시계 시간은 기기 의존 단일 실행이다.
+
 - **작성일**: 2026-07-02
 - **대상**: 중앙 관제형 V2X 자율주행 시뮬레이터, `IMPLEMENTATION_PLAN.md` Phase 7
 - **범위**: 이번 작업에서 신규 구현·검증한 서버측 산출물 전부
-- **검증 상태**: 서버 전체 테스트 **105 passed** (기존 92 + 신규 13), 실험 러너·차트·노트북 실행 확인 완료
+- **당시 검증 상태**: 서버 전체 테스트 **105 passed** (기존 92 + 신규 13). 현재 수치는 루트 README §12를 따른다.
 
 ---
 
@@ -153,14 +158,14 @@ Unity 없이 합성 월드로 단위 테스트된다. 실험 러너는 이 동�
 
 ## 5. 검증
 
-- **서버 테스트**: `cd server && python -m pytest -q` → **105 passed** (231.9 s).
+- **당시 서버 테스트**: `cd server && python -m pytest -q` → **105 passed** (231.9 s).
 - **실험 러너**: `run_algorithm_compare.py` 정상 완료, 27행 요약 CSV 생성.
 - **차트**: `make_charts.py` 3종 PNG 생성.
 - **노트북**: nbclient로 전 셀 실행, 오류 없음.
 
 재현:
 ```bash
-cd server && python -m pytest -q                     # 105 passed
+python -m pytest server/tests -q                     # 현재 결과는 루트 README §12
 python experiments/run_algorithm_compare.py          # algo_compare_{raw,summary}.csv
 python experiments/run_lka_test.py                   # lka_{drive_log,summary}.csv
 python experiments/make_charts.py                    # results/charts/*.png

@@ -86,13 +86,7 @@ namespace V2X.UI
 
         private void OnGUI()
         {
-            var title = new GUIStyle(GUI.skin.box)
-            {
-                fontSize = 18,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleCenter,
-                richText = true
-            };
+            float width = AppleGui.BeginFrame();
             string ns = ColorText("남북", NorthSouthState);
             string ew = ColorText("동서", EastWestState);
             string left = ColorText("보호좌회전", ProtectedLeftState);
@@ -100,14 +94,14 @@ namespace V2X.UI
             if (view != null && view.ActiveView == 2)
             {
                 string walk = PedestriansMayCross
-                    ? "<color=#5de8ff>보행 GREEN</color>"
-                    : "<color=#ff5a5a>보행 RED</color>";
-                GUI.Box(new Rect(Screen.width * .5f - 270f, 10f, 540f, 72f),
-                    $"교차로 종합  {ns} | {left} | {ew}\n{walk}", title);
+                    ? $"<color={AppleGui.GoodHex}>보행 GREEN</color>"
+                    : $"<color={AppleGui.DangerHex}>보행 RED</color>";
+                GUI.Box(new Rect(width * .5f - 270f, 18f, 540f, 72f),
+                    $"교차로 · {ns}   {left}   {ew}\n{walk}", AppleGui.StatusBox);
                 return;
             }
-            GUI.Box(new Rect(Screen.width * .5f - 125f, 10f, 250f, 54f),
-                "전방 신호  " + ColorText("", FacingState()), title);
+            GUI.Box(new Rect(width * .5f - 125f, 18f, 250f, 52f),
+                "전방 신호 · " + ColorText("", FacingState()), AppleGui.StatusBox);
         }
 
         private SignalState FacingState()
@@ -122,8 +116,8 @@ namespace V2X.UI
 
         private static string ColorText(string label, SignalState state)
         {
-            string color = state == SignalState.Green ? "#38ff68" :
-                state == SignalState.Yellow ? "#ffe33d" : "#ff4a4a";
+            string color = state == SignalState.Green ? AppleGui.GoodHex :
+                state == SignalState.Yellow ? "#a05a00" : AppleGui.DangerHex;
             return $"<color={color}>{label} {state}</color>";
         }
     }

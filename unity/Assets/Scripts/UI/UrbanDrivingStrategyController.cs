@@ -62,6 +62,7 @@ namespace V2X.UI
 
         private void Update()
         {
+            RefreshToggleVisuals();
             if (ego != null && ego.LeftTurnPhase == "AbortedStraight" &&
                 ego.maneuver == "left")
             {
@@ -82,6 +83,23 @@ namespace V2X.UI
             }
 
             UpdateTargetLaneRequest();
+        }
+
+        private void RefreshToggleVisuals()
+        {
+            SetToggleLabel(straightToggle);
+            SetToggleLabel(leftToggle);
+            SetToggleLabel(rightToggle);
+        }
+
+        private static void SetToggleLabel(Toggle toggle)
+        {
+            if (toggle == null) return;
+            var label = toggle.GetComponentInChildren<Text>();
+            if (label != null)
+                label.color = toggle.isOn
+                    ? Color.white
+                    : new Color(.114f, .114f, .122f, 1f);
         }
 
         private void BeginDefaultCruise()

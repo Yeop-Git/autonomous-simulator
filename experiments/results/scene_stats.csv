@@ -1,0 +1,6 @@
+scenario,vehicles,ticks,sim_seconds,step_p50_ms,step_p95_ms,step_max_ms,mean_speed_mps,min_same_lane_gap_m,min_ttc_s,peak_decel_mps2,hard_brake_episodes,max_behavior_changes_10s,arrivals
+LKA_Test,1,400,40.0,0.057,0.215,0.316,18.66,n/a,inf,4.19,1,0,1
+Highway (ramp merge),4,400,40.0,0.588,0.747,1.335,7.17,10.99,inf,6.0,24,1,1
+Urban (8 approaches + pedestrian),8,1200,120.0,0.419,1.096,3.677,3.69,15.05,3.87,6.0,22,2,7
+EmergencyAvoidance (cargo + ambulance),2,500,50.0,0.377,0.574,13.053,8.12,30.06,1.18,6.0,15,8,1
+IntegratedCity (shoulder merge + obstacle),3,500,50.0,0.744,1.398,6.751,10.25,29.13,3.12,6.0,16,6,2

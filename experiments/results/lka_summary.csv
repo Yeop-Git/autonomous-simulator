@@ -1,0 +1,13 @@
+controller,speed_kmh,rms_lateral_m,max_lateral_m,departures
+pure_pursuit,40,0.0887,0.1305,0
+pure_pursuit,60,0.1125,0.1565,0
+pure_pursuit,80,0.1351,0.1803,0
+pure_pursuit,100,0.1525,0.2020,0
+stanley,40,0.0407,0.0576,0
+stanley,60,0.0554,0.0741,0
+stanley,80,0.0489,0.0692,0
+stanley,100,0.0578,0.0820,0
+pid,40,0.0159,0.0544,0
+pid,60,0.0139,0.0515,0
+pid,80,0.2391,0.3651,0
+pid,100,0.3029,0.5806,0

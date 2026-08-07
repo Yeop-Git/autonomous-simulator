@@ -78,10 +78,25 @@ namespace V2X.UI
             {
                 if (sceneButtons[i] == null) continue;
                 var image = sceneButtons[i].targetGraphic as Image;
+                bool selected = i == index;
                 if (image != null)
-                    image.color = i == index
-                        ? new Color(.16f, .38f, .58f, .96f)
-                        : new Color(.08f, .12f, .18f, .92f);
+                    image.color = selected
+                        ? new Color(0f, .4f, .8f, 1f)
+                        : new Color(1f, 1f, 1f, .94f);
+                var colors = sceneButtons[i].colors;
+                colors.normalColor = selected ? new Color(0f, .4f, .8f, 1f) : Color.white;
+                colors.highlightedColor = selected
+                    ? new Color(0f, .443f, .89f, 1f)
+                    : new Color(.961f, .961f, .969f, 1f);
+                colors.pressedColor = selected
+                    ? new Color(0f, .32f, .68f, 1f)
+                    : new Color(.88f, .88f, .9f, 1f);
+                sceneButtons[i].colors = colors;
+                var label = sceneButtons[i].GetComponentInChildren<Text>();
+                if (label != null)
+                    label.color = selected
+                        ? Color.white
+                        : new Color(.114f, .114f, .122f, 1f);
             }
 
             if (titleText != null)
@@ -126,8 +141,7 @@ namespace V2X.UI
                 return;
             }
             statusText.text = IsLoadable(entry.sceneName)
-                ? "숫자키로 선택 · Enter 또는 실행 버튼으로 진입 " +
-                  "(Python 서버가 켜져 있어야 주행합니다)"
+                ? "숫자키로 선택하고 Enter로 실행 · 서버 연결 시 차량이 주행합니다"
                 : $"'{entry.sceneName}' 씬이 Build Settings에 없습니다";
         }
 

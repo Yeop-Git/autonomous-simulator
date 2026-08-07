@@ -15,8 +15,6 @@ namespace V2X.UI
         public VehicleController[] vehicles;
         public bool show = true;
 
-        private GUIStyle _style;
-
         private void Start()
         {
             if (client == null) client = FindFirstObjectByType<V2XClient>();
@@ -26,22 +24,23 @@ namespace V2X.UI
 
         private void OnGUI()
         {
+            AppleGui.BeginFrame();
             if (!show || client == null) return;
-            _style ??= new GUIStyle(GUI.skin.label) { fontSize = 13, richText = true };
-
-            GUILayout.BeginArea(new Rect(10, 10, 460, 400), GUI.skin.box);
-            string conn = client.IsConnected ? "<color=#6f6>connected</color>"
-                                             : "<color=#f66>disconnected</color>";
-            GUILayout.Label($"V2X: {conn}", _style);
+            GUILayout.BeginArea(new Rect(18, 18, 460, 400), AppleGui.Panel);
+            string conn = client.IsConnected
+                ? $"<color={AppleGui.GoodHex}>연결됨</color>"
+                : $"<color={AppleGui.DangerHex}>연결 안 됨</color>";
+            GUILayout.Label("V2X 상태", AppleGui.Title);
+            GUILayout.Label($"중앙 서버 {conn}", AppleGui.State);
             GUILayout.Label($"tick {client.CurrentTick}  applied {client.LastAppliedTick}  " +
-                            $"lag {client.LastLagTicks}", _style);
-            GUILayout.Space(6);
+                            $"lag {client.LastLagTicks}", AppleGui.MutedBody);
+            GUILayout.Space(12);
             foreach (var v in vehicles)
             {
                 if (v == null) continue;
                 GUILayout.Label(
                     $"{v.Id}: <b>{v.Behavior}</b>  v={v.CurrentSpeed:0.0} m/s  " +
-                    $"lane={v.CurrentLaneId}  latErr={v.LateralError:0.00}", _style);
+                    $"lane={v.CurrentLaneId}  latErr={v.LateralError:0.00}", AppleGui.Body);
             }
             GUILayout.EndArea();
         }

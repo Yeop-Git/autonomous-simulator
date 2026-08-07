@@ -58,9 +58,9 @@ namespace V2X.UI
 
         private void OnGUI()
         {
-            var style = new GUIStyle(GUI.skin.box) { fontSize = 15, alignment = TextAnchor.MiddleCenter };
-            GUI.Box(new Rect(Screen.width - 350, 10, 340, 40),
-                $"V2X 차선변경: {LastRequest}", style);
+            float width = AppleGui.BeginFrame();
+            GUI.Box(new Rect(width - 370, 76, 350, 48),
+                $"차선 변경 · {LastRequest}", AppleGui.StatusBox);
         }
     }
 }

@@ -12,10 +12,6 @@ namespace V2X.UI
         public SimulationManager simulation;
         public EmergencyAvoidanceScenarioController scenario;
         public V2XClient client;
-        private GUIStyle _title;
-        private GUIStyle _label;
-        private GUIStyle _state;
-
         private void Start()
         {
             ego ??= FindFirstObjectByType<VehicleController>();
@@ -26,41 +22,34 @@ namespace V2X.UI
 
         private void OnGUI()
         {
-            _title ??= new GUIStyle(GUI.skin.label)
-            { fontSize = 22, fontStyle = FontStyle.Bold, normal = { textColor = Color.white } };
-            _label ??= new GUIStyle(GUI.skin.label)
-            { fontSize = 14, richText = true, normal = { textColor = new Color(.88f, .93f, 1f) } };
-            _state ??= new GUIStyle(_label)
-            { fontSize = 17, fontStyle = FontStyle.Bold };
-
-            GUILayout.BeginArea(new Rect(18, 18, 430, 310), GUI.skin.window);
-            GUILayout.Label("V2X EMERGENCY AVOIDANCE LAB", _title);
-            GUILayout.Label("A* GLOBAL  ·  RRT LOCAL  ·  ACTIVE PULL-OVER", _label);
-            GUILayout.Space(8);
+            float width = AppleGui.BeginFrame();
+            GUILayout.BeginArea(new Rect(18, 18, 430, 310), AppleGui.Panel);
+            GUILayout.Label("긴급 회피 실험", AppleGui.Title);
+            GUILayout.Label("A* 전역 경로 · RRT 국부 회피 · 긴급차 양보", AppleGui.MutedBody);
+            GUILayout.Space(12);
             if (ego != null)
             {
                 string stateColor = ego.Behavior == "EmergencyBraking" ||
-                                    ego.Behavior == "ControlledStopping" ? "#ff5544" : "#69f7ff";
-                GUILayout.Label($"STATE  <color={stateColor}>{ego.Behavior}</color>", _state);
-                GUILayout.Label($"Planner <b>{ego.Planner.ToUpperInvariant()}</b>   " +
-                                $"plan {ego.PlanningTimeMs:0.0} ms   " +
-                                $"clearance {ego.MinimumClearance:0.00} m", _label);
-                GUILayout.Label($"Speed {ego.CurrentSpeed * 3.6f:0.0} km/h   " +
-                                $"target {ego.TargetSpeed * 3.6f:0.0} km/h   lane {ego.CurrentLaneId}", _label);
-                GUILayout.Label($"Lateral error {ego.LateralError:0.00} m   " +
-                                $"signal {ego.TurnSignal.ToUpperInvariant()}", _label);
+                                    ego.Behavior == "ControlledStopping"
+                    ? AppleGui.DangerHex : AppleGui.BlueHex;
+                GUILayout.Label($"<color={stateColor}>{ego.Behavior}</color>", AppleGui.State);
+                GUILayout.Label($"{ego.Planner.ToUpperInvariant()}  ·  계획 {ego.PlanningTimeMs:0.0} ms  ·  여유 {ego.MinimumClearance:0.00} m", AppleGui.Body);
+                GUILayout.Label($"{ego.CurrentSpeed * 3.6f:0.0} / {ego.TargetSpeed * 3.6f:0.0} km/h  ·  {ego.CurrentLaneId}", AppleGui.Body);
+                GUILayout.Label($"횡오차 {ego.LateralError:0.00} m  ·  {ego.TurnSignal.ToUpperInvariant()}", AppleGui.Body);
             }
-            string connection = client != null && client.IsConnected ? "<color=#66ff99>ONLINE</color>" : "<color=#ff6655>OFFLINE</color>";
-            GUILayout.Label($"V2X {connection}   tick {client?.LastAppliedTick ?? -1}", _label);
-            GUILayout.Space(6);
-            GUILayout.Label($"EVENT  {scenario?.LastEvent ?? "대기 중"}", _label);
-            GUILayout.Label("[4] 낙하물   [5] 긴급차   [6] RRT↔RRT*   [0] 재시작", _label);
+            string connection = client != null && client.IsConnected
+                ? $"<color={AppleGui.GoodHex}>온라인</color>"
+                : $"<color={AppleGui.DangerHex}>오프라인</color>";
+            GUILayout.Label($"V2X {connection}  ·  tick {client?.LastAppliedTick ?? -1}", AppleGui.MutedBody);
+            GUILayout.Space(8);
+            GUILayout.Label($"이벤트 · {scenario?.LastEvent ?? "대기 중"}", AppleGui.State);
+            GUILayout.Label("4 낙하물   5 긴급차   6 플래너   0 재시작", AppleGui.MutedBody);
             GUILayout.EndArea();
 
-            GUILayout.BeginArea(new Rect(Screen.width - 220, 18, 200, 92), GUI.skin.box);
-            GUILayout.Label("PATH LEGEND", _state);
-            GUILayout.Label("<color=#33ff66>━ A* GLOBAL</color>   <color=#20f5ff>━ RRT</color>", _label);
-            GUILayout.Label("<color=#ff33dd>━ RRT*</color>   <color=#ffbb22>━ YIELD</color>", _label);
+            GUILayout.BeginArea(new Rect(width - 220, 82, 200, 104), AppleGui.SubtlePanel);
+            GUILayout.Label("경로 표시", AppleGui.State);
+            GUILayout.Label("<color=#33aa55>━ A* 전역</color>  <color=#008fb8>━ RRT</color>", AppleGui.Body);
+            GUILayout.Label("<color=#b030b0>━ RRT*</color>  <color=#a05a00>━ 양보</color>", AppleGui.Body);
             GUILayout.EndArea();
         }
     }

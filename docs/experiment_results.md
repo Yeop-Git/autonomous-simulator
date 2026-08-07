@@ -9,13 +9,18 @@ produced entirely from **headless, logged CSV runs** — no Unity required.
 ```bash
 python experiments/run_algorithm_compare.py   # -> results/algo_compare_{raw,summary}.csv
 python experiments/run_lka_test.py            # -> results/lka_{drive_log,summary}.csv
+python experiments/run_scene_stats.py         # -> results/scene_stats.csv
 python experiments/make_charts.py             # -> results/charts/*.png
-# or open experiments/analysis.ipynb for the interactive version
+python -m pytest server/tests -q --junitxml=experiments/results/pytest.xml
+python experiments/validate_results.py        # -> results/manifest.json
 ```
 
-All numbers below are from `experiments/results/algo_compare_summary.csv` and
-`experiments/results/lka_summary.csv` (5 seeds × {1, 5, 20} vehicles per
-scenario/planner). Charts are in `experiments/results/charts/`.
+The tables below are backed by the CSV and JUnit artifacts listed in
+`experiments/results/README.md`. The algorithm comparison uses 5 seeds ×
+batches of {1, 5, 20}
+sequential queries per scenario/planner). Batch prefixes reuse the same fixed
+query-generation stream, so they are not independent samples or simultaneous
+multi-vehicle interactions. Charts are in `experiments/results/charts/`.
 
 ---
 
@@ -26,7 +31,7 @@ free-space sampling):
 
 | Scenario | World | What it tests |
 |---|---|---|
-| `road_open` | clean 2×2 one-way urban grid, no obstacles | A\*'s home turf |
+| `road_open` | clean 2×2 one-way urban grid, no obstacles | structured-road baseline |
 | `road_detour` | single straight lane, middle blocked by a hazard | lane graph has **no alternative edge** |
 | `obstacle_field` | free corridor cluttered with 6 irregular obstacles | off-graph avoidance |
 
@@ -34,22 +39,22 @@ free-space sampling):
 
 | Scenario | Planner | Success | Compute (ms) | Path len (m) | Tree/expanded nodes |
 |---|---|---:|---:|---:|---:|
-| road_open | **A\*** | **100%** | **0.35** | 233.8 | 8 |
+| road_open | **A\*** | **100%** | **0.36** | 233.8 | 8 |
 | road_open | RRT | 100% | 0.05 | 164.3 | 1 |
-| road_open | RRT\* | 100% | 437.0 | 168.5 | 1501 |
+| road_open | RRT\* | 100% | 456.9 | 168.5 | 1501 |
 | road_detour | A\* | **0%** | 0.07 | — | 1 |
-| road_detour | **RRT** | **100%** | **0.53** | 112.8 | 60 |
-| road_detour | **RRT\*** | **100%** | 540.2 | **96.7** | 1499 |
+| road_detour | **RRT** | **100%** | **0.50** | 112.8 | 60 |
+| road_detour | **RRT\*** | **100%** | 553.3 | **96.7** | 1499 |
 | obstacle_field | A\* | **0%** | 0.07 | — | 1 |
-| obstacle_field | **RRT** | **100%** | **1.01** | 112.2 | 64 |
-| obstacle_field | **RRT\*** | **100%** | 710.5 | **97.0** | 1456 |
+| obstacle_field | **RRT** | **100%** | **0.99** | 112.2 | 64 |
+| obstacle_field | **RRT\*** | **100%** | 739.2 | **97.0** | 1456 |
 
 ![A* vs RRT vs RRT*](../experiments/results/charts/algo_compare.png)
 
 ### Findings
 
 1. **On the road graph, A\* is the right tool.** It returns a *road-legal*
-   route (233.8 m following the one-way grid) in ~0.35 ms. RRT's shorter
+   route (233.8 m following the one-way grid) in ~0.36 ms in this run. RRT's shorter
    164 m "path" is a straight diagonal that **cuts across the grid and ignores
    lane topology / direction** — not drivable. This is exactly the plan's
    prediction that A\* dominates on structured road networks (§15.4).
@@ -60,20 +65,20 @@ free-space sampling):
    is the documented A\* limitation (§15.1 단점) and the reason a sampling
    planner is needed for hazard detours and stalled-car avoidance.
 
-3. **RRT is fast; RRT\* is better but ~700× costlier.** Both solve the obstacle
-   scenarios 100% of the time. RRT finds a feasible but jagged path (~112–113 m)
+3. **RRT is fast; RRT\* is better but hundreds of times costlier.** Both solve
+   all sampled obstacle queries in this run. RRT finds a feasible but jagged path (~112–113 m)
    in ~1 ms; RRT\* refines to a shorter, smoother path (~97 m, a **~14%**
-   reduction) but spends its full iteration budget doing so (~0.5–0.7 s). Its
-   path-length variance is also far lower (std ≈ 0.1–1.2 m vs RRT's 5–9 m),
-   i.e. more consistent quality across seeds.
+   reduction) but spends its full iteration budget doing so (~0.5–0.8 s). Its
+   pooled path-length dispersion is also lower (std ≈ 0.2–1.0 m vs RRT's
+   6.1–9.1 m). Queries and seeds are pooled, so this is not an independent
+   seed-robustness estimate.
 
-4. **Real-time implication (plan §15.3 단점, §3.2 연구질문).** At ~0.5–0.7 s per
-   query, RRT\* does **not** scale to real-time multi-vehicle replanning
-   (`total_time_ms` grows linearly with vehicle count: 20 obstacle-field
-   queries × 5 seeds = ~71 s of planning). RRT at ~1 ms is viable for online
-   detours; RRT\* is best reserved for offline path-quality comparison or
-   one-off optimization. **Recommended policy:** A\* for global road routing,
-   RRT for online obstacle detours, RRT\* for quality benchmarking.
+4. **Operational implication.** At ~0.5–0.8 s per query, this RRT\*
+   implementation does not fit the authored Unity scenes' nominal 40 ms send
+   interval. The 20-query total is a sequential batch, so it is not evidence
+   about a concurrent multi-vehicle scheduler. **Current policy:** A\* for
+   global road routing, RRT for online obstacle detours, and RRT\* for offline
+   path-quality comparison.
 
 ![Planning load vs vehicle count](../experiments/results/charts/algo_time_vs_vehicles.png)
 
@@ -81,8 +86,9 @@ free-space sampling):
 
 ## Experiment 2 — LKA lateral control (plan §20.2)
 
-Curved-track sweep of the three lateral controllers at 40/60/80/100 km/h
-(`experiments/run_lka_test.py`). RMS lateral error (m):
+Single deterministic curved-track runs (R=140 m, no noise or delay) of the three
+lateral controllers at 40/60/80/100 km/h (`experiments/run_lka_test.py`). This
+is not a measurement of the Unity `LKA_Test` scene. RMS lateral error (m):
 
 | Speed (km/h) | Pure Pursuit | Stanley | PID |
 |---:|---:|---:|---:|
@@ -95,34 +101,35 @@ Curved-track sweep of the three lateral controllers at 40/60/80/100 km/h
 
 ### Findings
 
-1. **Stanley is the most speed-robust** with the default (untuned) gains: RMS
-   error stays ~0.04–0.06 m flat across all speeds. This matches its reputation
-   as an LKA-style centerline tracker (plan §10.2).
-2. **Pure Pursuit degrades with speed** (0.089 → 0.153 m) — the fixed lookahead
-   under-steers the curve as speed rises, the classic tuning issue noted in
-   §10.2. Still zero lane departures on this gentle curve.
-3. **PID is excellent at low speed but unstable at high speed** (0.016 m at
-   40 km/h → 0.30 m at 100 km/h). This is the expected limit of a pure
-   error-feedback controller on curvature without feed-forward (§10.2 단점).
-4. **No lane departures** for any controller on this radius, so gain tuning is
-   about ride quality, not safety, here. Final gains are a **human task**
-   (IMPLEMENTATION_PLAN Phase 4) — this harness supplies the plots.
+1. **Stanley has the lowest speed sensitivity in this synthetic sweep** with
+   the default (untuned) gains: RMS error stays ~0.04–0.06 m. Robustness to
+   noise, initial offset, curvature changes, or steering delay was not tested.
+2. **Pure Pursuit degrades with speed** (0.089 → 0.153 m). Its lookahead is
+   speed-dependent (`4.0 + 0.4v`), so the result is attributed only to the
+   current lookahead law and untuned gains. There were zero departures in this run.
+3. **PID has the smallest low-speed error, but its error increases markedly at
+   high speed** (0.016 m at 40 km/h → 0.30 m at 100 km/h). This run does not
+   establish instability; it records the result of the current pure
+   error-feedback gains without curvature feed-forward.
+4. **No lane departures** were observed for any controller on this radius.
+   This single deterministic condition is not a safety result; noise, initial
+   offset, curvature changes, steering delay, and Unity physics still require validation.
 
 ---
 
-## Experiments 3–5 — status
+## Experiment 3 — headless scene workload
 
-| Experiment | Plan | Server-side logic | Blocker |
-|---|---|---|---|
-| Highway merge control (§20.3) | merge reservation | `server/merge.py` + tests | needs Unity mainline+ramp scene (human) |
-| Urban intersection (§20.4) | signal vs reservation | `server/traffic.py`, `intersection.py` + tests | needs Unity intersection scene (human) |
-| Hazard response (§20.5) | detect→command latency | events→obstacle→A\* reroute + `collision_predictor` | needs Unity hazard scene (human) |
+`python experiments/run_scene_stats.py` drives reduced headless counterparts of
+all five authored scenes and records Python `CentralController.step()` timing,
+same-lane centre gaps, reported TTC, saturated deceleration episodes, behaviour
+changes, and fixed-horizon arrivals. The CSV is
+`experiments/results/scene_stats.csv`.
 
-The **algorithms** for 3–5 are implemented and unit-tested headless
-(Phases 5–6). Producing their logged-metric CSVs requires the corresponding
-Unity scenes, which are the remaining human tasks in `TASKS.md`. The headless
-sim (`server/headless_sim.py`) can drive reduced versions of these once
-synthetic scenes are added to `server/scenarios/networks.py`.
+This is a model-in-the-loop workload baseline, not end-to-end latency: WebSocket,
+JSON/schema processing, Unity command application, physics, and rendering are
+outside the timed region. Each scene is run once, so p50/p95 describe ticks in
+one run rather than a confidence interval across runs. See the root README §11.3
+and `experiments/results/README.md` for the table and provenance.
 
 ---
 
@@ -135,3 +142,5 @@ synthetic scenes are added to `server/scenarios/networks.py`.
   top of `run_algorithm_compare.py`.
 - CSV schema for the algorithm comparison is defined in the runner; the LKA
   drive log uses the frozen plan-§21.1 schema via `server/logging_csv.py`.
+- Exact artifact scope, environment, row counts, and hashes are recorded in
+  `experiments/results/README.md` and `experiments/results/manifest.json`.

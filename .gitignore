@@ -102,6 +102,11 @@ experiments/results/charts/*
 Temp/
 *.csv
 !shared/**/*.csv
+!experiments/results/*.csv
+!experiments/results/README.md
+!experiments/results/manifest.json
+!experiments/results/pytest.xml
+!docs/videos/capture-log.csv
 
 # =====================================================================
 # IDE / OS

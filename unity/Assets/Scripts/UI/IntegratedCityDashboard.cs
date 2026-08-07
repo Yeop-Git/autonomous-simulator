@@ -12,10 +12,6 @@ namespace V2X.UI
         public SimulationManager simulation;
         public IntegratedCityScenarioDirector director;
         public V2XClient client;
-        private GUIStyle _title;
-        private GUIStyle _body;
-        private GUIStyle _state;
-
         private void Start()
         {
             ego ??= GameObject.Find("urban_ego")?.GetComponent<VehicleController>();
@@ -26,35 +22,30 @@ namespace V2X.UI
 
         private void OnGUI()
         {
-            _title ??= new GUIStyle(GUI.skin.label)
-            { fontSize = 21, fontStyle = FontStyle.Bold, normal = { textColor = Color.white } };
-            _body ??= new GUIStyle(GUI.skin.label)
-            { fontSize = 14, richText = true, normal = { textColor = new Color(.88f, .94f, 1f) } };
-            _state ??= new GUIStyle(_body)
-            { fontSize = 17, fontStyle = FontStyle.Bold };
-
-            GUILayout.BeginArea(new Rect(18, 18, 470, 325), GUI.skin.window);
-            GUILayout.Label("V2X INTEGRATED CITY - 10 MIN SHOWCASE", _title);
+            float width = AppleGui.BeginFrame();
+            GUILayout.BeginArea(new Rect(18, 18, 470, 325), AppleGui.Panel);
+            GUILayout.Label("통합 주행", AppleGui.Title);
             float remaining = director?.RemainingTime ?? 600f;
-            GUILayout.Label($"RUN {Mathf.FloorToInt(remaining / 60f):00}:{Mathf.FloorToInt(remaining % 60f):00} remaining   LAP {director?.Lap ?? 0}", _state);
-            GUILayout.Label($"PHASE  <color=#69f7ff>{director?.Phase ?? "Initializing"}</color>", _body);
-            GUILayout.Space(6);
+            GUILayout.Label($"남은 시간 {Mathf.FloorToInt(remaining / 60f):00}:{Mathf.FloorToInt(remaining % 60f):00}  ·  LAP {director?.Lap ?? 0}", AppleGui.State);
+            GUILayout.Label($"단계  <color={AppleGui.BlueHex}>{director?.Phase ?? "초기화"}</color>", AppleGui.Body);
+            GUILayout.Space(12);
             if (ego != null)
             {
-                GUILayout.Label($"STATE  <b>{ego.Behavior}</b>   lane {ego.CurrentLaneId}", _state);
-                GUILayout.Label($"Planner <b>{ego.Planner.ToUpperInvariant()}</b>   plan {ego.PlanningTimeMs:0.0} ms   clearance {ego.MinimumClearance:0.00} m", _body);
-                GUILayout.Label($"Speed {ego.CurrentSpeed * 3.6f:0.0} km/h / target {ego.TargetSpeed * 3.6f:0.0} km/h   signal {ego.TurnSignal.ToUpperInvariant()}", _body);
+                GUILayout.Label($"{ego.Behavior}  ·  {ego.CurrentLaneId}", AppleGui.State);
+                GUILayout.Label($"{ego.Planner.ToUpperInvariant()}  ·  계획 {ego.PlanningTimeMs:0.0} ms  ·  여유 {ego.MinimumClearance:0.00} m", AppleGui.Body);
+                GUILayout.Label($"{ego.CurrentSpeed * 3.6f:0.0} / {ego.TargetSpeed * 3.6f:0.0} km/h  ·  {ego.TurnSignal.ToUpperInvariant()}", AppleGui.Body);
             }
-            string link = client != null && client.IsConnected ? "<color=#66ff99>ONLINE</color>" : "<color=#ff6655>OFFLINE</color>";
-            GUILayout.Label($"Central V2X {link}   tick {client?.LastAppliedTick ?? -1}", _body);
-            GUILayout.Space(7);
-            GUILayout.Label("ACTIVE FEATURES", _state);
-            GUILayout.Label("Signals + pedestrians + ACC + collision prediction\nA* routing + RRT/RRT* obstacle escape + emergency pull-over", _body);
+            string link = client != null && client.IsConnected
+                ? $"<color={AppleGui.GoodHex}>온라인</color>"
+                : $"<color={AppleGui.DangerHex}>오프라인</color>";
+            GUILayout.Label($"중앙 V2X {link}  ·  tick {client?.LastAppliedTick ?? -1}", AppleGui.MutedBody);
+            GUILayout.Space(10);
+            GUILayout.Label("신호 · 보행자 · ACC · 충돌 예측\nA* 전역 경로 · RRT 국부 회피 · 긴급차 양보", AppleGui.MutedBody);
             GUILayout.EndArea();
 
-            GUILayout.BeginArea(new Rect(Screen.width - 235, 18, 215, 105), GUI.skin.box);
-            GUILayout.Label("PATH TELEMETRY", _state);
-            GUILayout.Label("<color=#33ff66>A* GLOBAL</color>  <color=#20f5ff>RRT LOCAL</color>\n<color=#ff33dd>RRT* OPTIMAL</color>  <color=#ffbb22>YIELD</color>", _body);
+            GUILayout.BeginArea(new Rect(width - 235, 82, 215, 112), AppleGui.SubtlePanel);
+            GUILayout.Label("경로 표시", AppleGui.State);
+            GUILayout.Label("<color=#33aa55>A* 전역</color>  <color=#008fb8>RRT 국부</color>\n<color=#b030b0>RRT* 비교</color>  <color=#a05a00>양보</color>", AppleGui.Body);
             GUILayout.EndArea();
         }
     }

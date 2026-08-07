@@ -25,6 +25,7 @@ Run:
 from __future__ import annotations
 
 import csv
+import math
 import random
 import statistics
 import sys
@@ -123,12 +124,23 @@ def path_is_collision_free(path, world) -> bool:
     return all(collision_free(a, b, world, 1.0) for a, b in zip(path, path[1:]))
 
 
+def endpoint_error(path, point, at_start: bool) -> float:
+    """XZ distance from the requested endpoint; infinity for an empty path."""
+    if not path:
+        return math.inf
+    endpoint = path[0] if at_start else path[-1]
+    return math.hypot(endpoint[0] - point[0], endpoint[2] - point[2])
+
+
 def run_query(name: str, seed: int, start, goal, world):
     planner = make_planner(name, seed)
     t0 = time.perf_counter()
     path = planner.plan(start, goal, world)
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
-    success = bool(path) and path_is_collision_free(path, world)
+    start_error = endpoint_error(path, start, at_start=True)
+    goal_error = endpoint_error(path, goal, at_start=False)
+    collision_free_path = bool(path) and path_is_collision_free(path, world)
+    success = start_error <= 4.0 and goal_error <= 4.0 and collision_free_path
     length = polyline_length(path) if path else 0.0
     nodes = getattr(planner, "last_expanded", getattr(planner, "last_nodes", 0))
     return {
@@ -136,6 +148,9 @@ def run_query(name: str, seed: int, start, goal, world):
         "plan_time_ms": elapsed_ms,
         "path_length": length if success else 0.0,
         "nodes": nodes,
+        "start_error_m": start_error if path else "inf",
+        "goal_error_m": goal_error if path else "inf",
+        "collision_free": int(collision_free_path),
     }
 
 
@@ -161,7 +176,8 @@ def main():
     with open(raw_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=[
             "scenario", "planner", "num_vehicles", "seed", "vehicle_id",
-            "success", "plan_time_ms", "path_length", "nodes"])
+            "success", "plan_time_ms", "path_length", "nodes",
+            "start_error_m", "goal_error_m", "collision_free"])
         w.writeheader()
         w.writerows(raw_rows)
 

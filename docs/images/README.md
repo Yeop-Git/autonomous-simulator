@@ -23,5 +23,26 @@
 실험 차트(`experiments/results/charts/*.png`)는 자리표시자가 아니라 실제 산출물이며
 `python experiments/make_charts.py`로 다시 생성됩니다.
 
+## 영상 촬영 규격
+
+영상은 `docs/videos/`에 두고, README에는 같은 이름의 poster PNG를
+먼저 표시한다. 기본 포맷은 1920×1080, 60 fps, H.264 MP4, 오디오 없음이다.
+카메라는 영상 중간에 바꾸지 않고, 조작 직전 2초와 결과 이후 3초를 남긴다.
+
+| 영상 파일 | 길이 | 카메라 | 트리거와 시작 시점 | README 위치 |
+|---|---:|---|---|---|
+| `main-hub.mp4` | 10 s | 허브 고정 | 1→5번 선택 후 설명 패널 변경 | §10.0 Main |
+| `lka-test.mp4` | 15 s | `3` 전경 | 곡선 진입 2초 전부터 중간 추종까지 | §10.1 |
+| `highway-merge.mp4` | 18 s | `3` 전경 | 램프 차량 ETA 조정 시작부터 합류 완료까지 | §10.2 |
+| `urban-left-turn.mp4` | 20 s | `3` 전경 | `좌회전` 선택, 화살표 녹색 2초 전부터 교차 완료까지 | §10.3 |
+| `emergency-avoidance.mp4` | 18 s | `1` 차량 | `4` 낙하물 투입 2초 전부터 원차선 복귀까지 | §10.4 |
+| `emergency-yield.mp4` | 18 s | `3` 전경 | `5` 긴급차 출동 2초 전부터 갓길 양보까지 | §10.4 |
+| `integrated-city.mp4` | 24 s | `3` 전경 | 교차로 진입 3초 전부터 대로 진출까지 | §10.5 |
+
+각 영상의 poster는 동일 파일명의 `.png`로 두고, 촬영 시 `scene`, Unity
+`tick`, 서버 로그 시작·종료 시각을 `docs/videos/capture-log.csv`의
+`file,scene,start_tick,end_tick,server_log,recorded_at` 열에 기록한다. 이 기록이
+없는 영상은 실험 증거가 아닌 설명용 화면으로만 취급한다.
+
 자리표시자는 일회성 산출물이라 생성 스크립트를 남겨두지 않았습니다. 실제
 스크린샷으로 덮어쓰면 그걸로 끝입니다.

@@ -29,6 +29,17 @@ namespace V2X.EditorTools
     {
         private const string SceneDir = "Assets/Scenes";
         private const string MaterialDir = "Assets/Generated/Materials";
+        private const string RoundedUiAssetPath = "Assets/Generated/V2X_UI_Rounded.asset";
+        private const string RegularFontAssetPath =
+            "Assets/Resources/Fonts/Pretendard-Regular.ttf";
+        private const string SemiboldFontAssetPath =
+            "Assets/Resources/Fonts/Pretendard-SemiBold.ttf";
+        private static readonly Color AppleBlue = new(0f, .4f, .8f, 1f);
+        private static readonly Color AppleBluePressed = new(0f, .443f, .89f, 1f);
+        private static readonly Color AppleInk = new(.114f, .114f, .122f, 1f);
+        private static readonly Color AppleMuted = new(.478f, .478f, .478f, 1f);
+        private static readonly Color AppleParchment = new(.961f, .961f, .969f, 1f);
+        private static readonly Color AppleWhite = Color.white;
         private const string PedestrianAssetPath =
             "Assets/Pedestrian/Pedestrian.prefab";
         private const string PedestrianBodyMaterialPath =
@@ -83,71 +94,90 @@ namespace V2X.EditorTools
             {
                 sceneName = "LKA_Test",
                 title = "LKA_Test · 차선 유지 시험로",
-                summary = "일정 곡률의 단일 곡선 트랙. 다른 차량도 이벤트도 없이 " +
-                          "횡방향 제어기만 홀로 남겨 lateral / heading error를 읽는다.",
+                summary = "구성: 반경 90 m 단일 곡선 트랙, 차량 1대, 교통·이벤트 없음.\n" +
+                          "목적: 다른 요인을 모두 제거하고 횡방향 제어기만 격리 계측.",
+                // The panel font is proportional, so no attempt is made to
+                // align a label column: each item is one bullet, continuation
+                // lines carry a fixed two-space indent.
                 techniques =
-                    "· 횡방향 제어: Pure Pursuit / Stanley (씬 기본값 Stanley)\n" +
-                    "· Frenet 오차 계산 (lateral / heading)\n" +
-                    "· 종방향 제어: ACC 자유주행 구간\n" +
-                    "· 고정 CSV 로깅 스키마 → 속도별 RMS 오차 비교",
+                    "· 횡방향 제어: Pure Pursuit / Stanley — 씬 기본값 Stanley\n" +
+                    "  (미조정 기본 이득: Stanley k=1.5, 최대 조향 0.6 rad)\n" +
+                    "· 종방향 제어: ACC 자유주행 구간 (선행차 없음)\n" +
+                    "· 계측: Frenet 오차 — 횡오차 · 헤딩오차 · Menger 곡률\n" +
+                    "· 로깅: 고정 CSV 스키마 → 속도별 RMS 횡오차\n" +
+                    "· 별도 근거: Python 합성 트랙(R=140 m) 단일 스윕 — 이 씬의\n" +
+                    "  R=90 m Unity 씬 구성과 혼동하지 않음 (README §11.2)",
                 controls = "1·2·3 카메라 전환 / Esc 허브로",
             },
             new()
             {
                 sceneName = "Highway",
                 title = "Highway · 고속도로 합류와 차선 변경",
-                summary = "3차선 본선 + 온램프. 램프 차량은 본선 중간(z=115)으로 " +
-                          "합류하므로, 중앙 서버가 시간 슬롯을 예약해 끼워 넣는다.",
+                summary = "구성: 3차선 본선 300 m(27.8 m/s) + 온램프(18 m/s).\n" +
+                          "쟁점: 램프가 본선 끝이 아닌 중간 z=115 m로 접합한다.",
                 techniques =
-                    "· V2X 합류 예약: ETA 기반 슬롯 탐색 → 램프 재타이밍 → " +
-                    "그래도 안 되면 본선 차량에 양보 지시\n" +
-                    "· 합류 차선 판정을 위상/기하로 도출 (차선 이름 무관)\n" +
-                    "· 중간 합류 접합을 반영한 선행차 탐색 + ACC\n" +
-                    "· 차선 변경 갭 수용 판정 (lead/lag 시간 간격)\n" +
-                    "· A* 전역 경로 + 낙하물 이벤트 재계획",
+                    "· 합류 예약: 본선 ETA 정렬 → 2.0 s 갭 탐색 → 램프 재타이밍\n" +
+                    "  → 갭이 없으면 본선 차량에 감속을 지시해 갭을 연다\n" +
+                    "  (램프 차량 혼자서는 불가능한 수 — 중앙 관제의 핵심)\n" +
+                    "· 판정: 합류 차선을 이름이 아닌 위상·기하로 도출\n" +
+                    "· 추종: 중간 접합을 반영한 선행차 탐색(하류·형제 차선) + ACC\n" +
+                    "· 차선 변경: lead/lag 시간 간격 1.5 s 갭 수용\n" +
+                    "· 전역 경로: A* + 중간 합류 접합 처리",
                 controls = "Q/E 차선 변경 · 1·2·3 카메라 / Esc 허브로",
             },
             new()
             {
                 sceneName = "Urban",
                 title = "Urban · 신호 교차로와 보호 좌회전",
-                summary = "4방향 8접근로 신호 교차로. 직진·좌회전·우회전을 UI로 " +
-                          "고르면 서버가 신호·갭·보행자를 모두 확인하고 명령한다.",
+                summary = "구성: 4방향 8접근로 신호 교차로, 정지선은 중심에서 16 m.\n" +
+                          "동작: 직진·좌회전·우회전을 UI로 지정하면 서버가 판단한다.",
                 techniques =
-                    "· 고정 주기 신호 (60 s, 보행 페이즈 포함) — 서버가 집행\n" +
-                    "· 보호 좌회전 정책: 차선 변경 → 정지선 → 화살표 → 교차 → 정렬,\n" +
-                    "  매 틱 재평가하며 늦은 갭 실패 시 직진으로 안전 취소\n" +
-                    "· 한국식 우회전: 적신호 완전 정지 후 보행자/교통 양보하며 진행\n" +
-                    "· 보행자 횡단 예측 및 회전 주행 통로 침범 판정\n" +
-                    "· 교차로 충돌 예약 + 신호로 관리되는 충돌 필터링",
+                    "· 신호: 60 s 고정 주기 — 서버가 집행하고 Unity는 그린다\n" +
+                    "  동서녹 10 → 보행 8 → 남북녹 10 → 좌회전 6 → 보행 8 s\n" +
+                    "  + 황색·전적색 버퍼 18 s (전체 60 s, 상세 README §7.3)\n" +
+                    "  정지선 5.5 m 전, 1.8 m/s²의 편안한 감속으로 선행 제동\n" +
+                    "· 좌회전: 갭 1.25 s 수용 → 정지선 14 m 전 차선 변경 완료\n" +
+                    "  → 화살표 대기 → 교차. 매 틱 재평가, 실패 시 직진 취소\n" +
+                    "  좌회전 중 보행자만 통로(반폭 3 m) 투영으로 판정 — 인도의\n" +
+                    "  사람은 무시. 그 외 충돌은 반경 2.5 m 원형 판정이다\n" +
+                    "· 충돌: 신호로 관리되는 충돌은 제외 — 녹색이 적색에 제동하지 않게",
                 controls = "직진/좌회전/우회전 토글 · 1·2·3 카메라 / Esc 허브로",
             },
             new()
             {
                 sceneName = "EmergencyAvoidance",
                 title = "EmergencyAvoidance · 돌발 장애물과 긴급차 회피",
-                summary = "직선 4차선 실험로. 주행 중 낙하물이 떨어지고 뒤에서 " +
-                          "긴급차가 접근한다. 전역 A* 대신 국부 샘플링 플래너가 " +
-                          "일시적으로 경로를 넘겨받는다.",
+                summary = "구성: 직선 4차선 실험로(주행 3 + 갓길 1). 낙하물이 떨어지고 " +
+                          "뒤에서 긴급차가 접근한다.\n" +
+                          "쟁점: 국부 샘플링 플래너를 수동 전환해 비교하는 전용 실험로.",
                 techniques =
-                    "· 코리도 제한 RRT / RRT* 국부 회피 (씬에서 실시간 전환)\n" +
-                    "· 회피 상태기: 감지 → 계획 → 횡방향 이탈 → 복귀 계획 → 합류\n" +
-                    "· 경로 후처리: 단축(shortcut) + 재샘플링 + 최대 조향각 검증\n" +
-                    "· 긴급차 우선: 최우측 갓길로 대피 후 통과 확인 뒤 복귀\n" +
-                    "· 계획 시간 / 최소 여유거리 실시간 계측",
+                    "· 국부 계획: 코리도 제한 RRT / RRT* — 실행 중 전환 가능\n" +
+                    "  탐색 공간 = 인접 차선군 + 후속 차선. 타 차량은 3 s 예측을\n" +
+                    "  반경 2.45 m로, 장애물은 자기 반경 + 1.45 m로 부풀린다\n" +
+                    "  중단 한계 RRT 45 ms / RRT* 140 ms — 40 ms 송신 간격보다 길 수 있음\n" +
+                    "  RRT* 전환은 비교용이며 25 Hz 운용 기본값은 RRT\n" +
+                    "· 후처리: 단축(0.5 m) → 재샘플링(2 m) → 꺾임각 78° 초과 시 폐기\n" +
+                    "· 상태기: 감지 → 탈출계획 → 횡방향 이탈 → 복귀계획 → 원차선 합류\n" +
+                    "  복귀가 막히면 정지 대신 회피 차선 주행 후 1.5 s 뒤 재시도\n" +
+                    "· 긴급차: 반경 60 m에서 최우측 갓길 대피, 통과 확인 후 복귀\n" +
+                    "· 계측: 계획 시간 / 최소 여유거리를 명령에 실어 실시간 보고",
                 controls = "4 낙하물 · 5 긴급차 · 6 RRT↔RRT* · 0 리셋 / Esc 허브로",
             },
             new()
             {
                 sceneName = "IntegratedCity",
-                title = "IntegratedCity · 통합 10분 시나리오",
-                summary = "교차로 → 대로 → 순환로로 이어지는 통합 코스. " +
-                          "위 씬들의 요소가 한 주행에 모두 등장한다.",
+                title = "IntegratedCity · 통합 시나리오",
+                summary = "구성: 교차로 → 대로 → 순환로. 도심 신호, 갓길 테이퍼, " +
+                          "장애물·긴급차 이벤트를 선택적으로 통합한다.\n" +
+                          "쟁점: 도심 격자(urban_*)와 간선(city_*), 명명 규칙이 다른 두 계열의 공존.",
                 techniques =
-                    "· 앞의 모든 요소 + 갓길↔대로 테이퍼 합류\n" +
-                    "· 이름이 아닌 위상으로 합류 지점을 찾아 예약 적용\n" +
-                    "· 서로 다른 도로 계열(도심/간선)을 가로지르는 회피 코리도\n" +
-                    "· 다차량 동시 주행 중 전역 상황 인지 및 충돌 예측",
+                    "· 합류: 갓길↔대로 테이퍼 — 접합 15 m 전 나란히 달리는 더 느린\n" +
+                    "  차선으로 판정. 차선 이름이 아니라 위상·기하가 근거다\n" +
+                    "· 회피: 서로 다른 도로 계열을 가로지르는 코리도 구성\n" +
+                    "· 인지: 다차량 동시 주행 중 전역 상황 인지와 해석적 충돌 예측\n" +
+                    "  (지평선 4 s, 안전거리 2.5 m, 샘플 사이 터널링 없음)\n" +
+                    "· 부하: 3대 50 s 헤드리스 단일 실행에서 Python step()\n" +
+                    "  p50 0.74 ms / p95 1.40 ms — 네트워크·Unity 적용 시간 제외",
                 controls = "시나리오 디렉터가 이벤트를 자동 진행 · 1·2·3 카메라 / Esc 허브로",
             },
         };
@@ -160,7 +190,7 @@ namespace V2X.EditorTools
             camera.transform.position = new Vector3(0f, 2f, -10f);
             camera.transform.rotation = Quaternion.identity;
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(.05f, .07f, .10f);
+            camera.backgroundColor = AppleParchment;
 
             var canvasGo = new GameObject("Hub Canvas");
             var canvas = canvasGo.AddComponent<Canvas>();
@@ -179,12 +209,12 @@ namespace V2X.EditorTools
             CreateHubLabel(canvas.transform, "Hub Title",
                 "중앙 집중형 V2X 자율주행 시뮬레이터",
                 new Vector2(0f, -70f), new Vector2(1400f, 52f), 38,
-                TextAnchor.MiddleCenter, anchorY: 1f);
+                TextAnchor.MiddleCenter, anchorY: 1f, color: AppleInk,
+                fontStyle: FontStyle.Bold);
             CreateHubLabel(canvas.transform, "Hub Subtitle",
-                "완전한 V2X 세계를 가정한 중앙 서버가 계획하고, Unity가 그린다. " +
-                "실행할 씬을 고르세요.",
+                "중앙 서버의 판단을 Unity에서 적용·시각화하는 완전 V2X 시뮬레이터",
                 new Vector2(0f, -122f), new Vector2(1400f, 34f), 20,
-                TextAnchor.MiddleCenter, anchorY: 1f);
+                TextAnchor.MiddleCenter, anchorY: 1f, color: AppleMuted);
 
             // Left: the menu. Right: what the selected scene actually exercises.
             var buttons = new Button[HubEntries.Length];
@@ -195,22 +225,32 @@ namespace V2X.EditorTools
                     new Vector2(-620f, 120f - i * 66f));
             }
 
+            // The detail panel is a spec sheet, so it is laid out as one:
+            // heading, two-line abstract, then the technique block that gets
+            // most of the height. Labels overflow downward rather than clip
+            // (CreateHubLabel), so the vertical gaps below are the real
+            // guarantee that a long entry does not run into the next field.
             var panel = CreateHubPanel(canvas.transform, "Detail Panel",
-                new Vector2(300f, -10f), new Vector2(900f, 420f));
+                new Vector2(300f, -10f), new Vector2(900f, 460f));
             var title = CreateHubLabel(panel, "Detail Title", "",
-                new Vector2(0f, 168f), new Vector2(840f, 40f), 26, TextAnchor.MiddleLeft);
+                new Vector2(0f, 198f), new Vector2(840f, 34f), 26, TextAnchor.MiddleLeft,
+                color: AppleInk, fontStyle: FontStyle.Bold);
             var summary = CreateHubLabel(panel, "Detail Summary", "",
-                new Vector2(0f, 108f), new Vector2(840f, 76f), 19, TextAnchor.UpperLeft);
+                new Vector2(0f, 142f), new Vector2(840f, 72f), 18, TextAnchor.UpperLeft,
+                color: AppleMuted);
             var techniques = CreateHubLabel(panel, "Detail Techniques", "",
-                new Vector2(0f, -24f), new Vector2(840f, 180f), 18, TextAnchor.UpperLeft);
+                new Vector2(0f, -12f), new Vector2(840f, 230f), 16, TextAnchor.UpperLeft,
+                color: AppleInk);
             var controls = CreateHubLabel(panel, "Detail Controls", "",
-                new Vector2(0f, -156f), new Vector2(840f, 44f), 17, TextAnchor.UpperLeft);
+                new Vector2(0f, -190f), new Vector2(840f, 40f), 16, TextAnchor.UpperLeft,
+                color: AppleBlue);
 
             var run = CreateButton(canvas.transform, "▶  이 씬 실행 (Enter)",
                 new Vector2(0f, 96f), 320f);
+            StylePrimaryButton(run);
             var status = CreateHubLabel(canvas.transform, "Hub Status", "",
                 new Vector2(0f, 50f), new Vector2(1400f, 30f), 16,
-                TextAnchor.MiddleCenter, anchorY: 0f);
+                TextAnchor.MiddleCenter, anchorY: 0f, color: AppleMuted);
 
             var hub = canvasGo.AddComponent<SceneHubController>();
             hub.entries = HubEntries;
@@ -224,6 +264,97 @@ namespace V2X.EditorTools
 
             // No Lane components here: the hub is a menu, not a road.
             Save("Main", exportLanes: false);
+        }
+
+        [MenuItem("V2X/Restyle All Scene UI")]
+        public static void RestyleAllSceneUi()
+        {
+            EnsureDirectories();
+            string activePath = SceneManager.GetActiveScene().path;
+            string[] names = { "Main", "LKA_Test", "Highway", "Urban",
+                "EmergencyAvoidance", "IntegratedCity" };
+            foreach (string name in names)
+            {
+                string path = $"{SceneDir}/{name}.unity";
+                if (!File.Exists(path)) continue;
+                var scene = EditorSceneManager.OpenScene(path);
+                foreach (var scaler in UnityEngine.Object.FindObjectsByType<CanvasScaler>(
+                             FindObjectsInactive.Include, FindObjectsSortMode.None))
+                {
+                    scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                    scaler.referenceResolution = new Vector2(1920f, 1080f);
+                    scaler.matchWidthOrHeight = .5f;
+                }
+                var buttons = UnityEngine.Object.FindObjectsByType<Button>(
+                    FindObjectsInactive.Include, FindObjectsSortMode.None);
+                bool hasReturn = false;
+                foreach (var button in buttons)
+                {
+                    string label = button.GetComponentInChildren<Text>(true)?.text ?? "";
+                    if (label.Contains("허브")) { hasReturn = true; break; }
+                }
+                if (name != "Main" && !hasReturn)
+                {
+                    var canvas = UnityEngine.Object.FindFirstObjectByType<Canvas>();
+                    if (canvas != null) CreateReturnToHubControl(canvas);
+                    buttons = UnityEngine.Object.FindObjectsByType<Button>(
+                        FindObjectsInactive.Include, FindObjectsSortMode.None);
+                }
+                foreach (var button in buttons)
+                {
+                    string label = button.GetComponentInChildren<Text>(true)?.text ?? "";
+                    StyleSecondaryButton(button);
+                    if (label.Contains("RETRY") || label.Contains("이 씬 실행"))
+                        StylePrimaryButton(button);
+                    if (label.Contains("허브"))
+                    {
+                        var rect = button.GetComponent<RectTransform>();
+                        rect.anchorMin = rect.anchorMax = Vector2.one;
+                        rect.pivot = Vector2.one;
+                        rect.anchoredPosition = new Vector2(-16f, -16f);
+                    }
+                }
+                foreach (var text in UnityEngine.Object.FindObjectsByType<Text>(
+                             FindObjectsInactive.Include, FindObjectsSortMode.None))
+                {
+                    bool emphasized = text.name.Contains("Title") ||
+                                      text.transform.parent?.GetComponent<Button>() != null;
+                    ApplyTypography(text, emphasized);
+                }
+                foreach (var toggle in UnityEngine.Object.FindObjectsByType<Toggle>(
+                             FindObjectsInactive.Include, FindObjectsSortMode.None))
+                {
+                    if (toggle.targetGraphic is Image background)
+                    {
+                        background.sprite = GetRoundedUiSprite();
+                        background.type = Image.Type.Sliced;
+                        background.color = AppleWhite;
+                    }
+                    if (toggle.graphic is Image selected)
+                    {
+                        selected.sprite = GetRoundedUiSprite();
+                        selected.type = Image.Type.Sliced;
+                        selected.color = AppleBlue;
+                    }
+                    var label = toggle.GetComponentInChildren<Text>(true);
+                    if (label != null) label.color = AppleInk;
+                }
+                foreach (var image in UnityEngine.Object.FindObjectsByType<Image>(
+                             FindObjectsInactive.Include, FindObjectsSortMode.None))
+                {
+                    if (image.name != "Retry Panel") continue;
+                    image.sprite = GetRoundedUiSprite();
+                    image.type = Image.Type.Sliced;
+                    image.color = AppleWhite;
+                    var message = image.GetComponentInChildren<Text>(true);
+                    if (message != null) message.color = AppleInk;
+                }
+                EditorSceneManager.SaveScene(scene);
+            }
+            if (!string.IsNullOrEmpty(activePath) && File.Exists(activePath))
+                EditorSceneManager.OpenScene(activePath);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[V2XSceneBuilder] Restyled UI in all six scenes.");
         }
 
         [MenuItem("V2X/Build LKA Test Scene")]
@@ -1325,7 +1456,10 @@ namespace V2X.EditorTools
             var canvasGo = new GameObject("V2X Control Canvas");
             var canvas = canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasGo.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = .5f;
             canvasGo.AddComponent<GraphicRaycaster>();
 
             if (UnityEngine.Object.FindFirstObjectByType<EventSystem>() == null)
@@ -1367,9 +1501,9 @@ namespace V2X.EditorTools
             var button = CreateButton(canvas.transform, "← 허브 (Esc)",
                 Vector2.zero, 150f);
             var rect = button.GetComponent<RectTransform>();
-            rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2(16f, -16f);
+            rect.anchorMin = rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.anchoredPosition = new Vector2(-16f, -16f);
             var hub = canvas.gameObject.AddComponent<ReturnToHubController>();
             hub.hubSceneName = "Main";
             hub.returnButton = button;
@@ -1383,7 +1517,9 @@ namespace V2X.EditorTools
             panelRect.anchorMin = panelRect.anchorMax = new Vector2(.5f, .5f);
             panelRect.sizeDelta = new Vector2(360f, 170f);
             var panelImage = panel.AddComponent<Image>();
-            panelImage.color = new Color(.04f, .07f, .11f, .94f);
+            panelImage.sprite = GetRoundedUiSprite();
+            panelImage.type = Image.Type.Sliced;
+            panelImage.color = AppleWhite;
 
             var messageGo = new GameObject("Message");
             messageGo.transform.SetParent(panel.transform, false);
@@ -1395,10 +1531,11 @@ namespace V2X.EditorTools
             message.text = "Reference vehicle reached the exit";
             message.alignment = TextAnchor.MiddleCenter;
             message.fontSize = 19;
-            message.color = Color.white;
-            message.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            message.color = AppleInk;
+            ApplyTypography(message, false);
 
             var retryButton = CreateButton(panel.transform, "RETRY", new Vector2(0f, -38f), 170f);
+            StylePrimaryButton(retryButton);
             var buttonRect = retryButton.GetComponent<RectTransform>();
             buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(.5f, .5f);
 
@@ -1427,8 +1564,8 @@ namespace V2X.EditorTools
             var status = statusGo.AddComponent<Text>();
             status.alignment = TextAnchor.MiddleCenter;
             status.fontSize = 17;
-            status.color = Color.white;
-            status.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            status.color = AppleInk;
+            ApplyTypography(status, true);
 
             var strategy = canvas.gameObject.AddComponent<UrbanDrivingStrategyController>();
             strategy.ego = ego;
@@ -1448,7 +1585,9 @@ namespace V2X.EditorTools
             rect.anchoredPosition = position;
             rect.sizeDelta = new Vector2(160f, 42f);
             var background = root.AddComponent<Image>();
-            background.color = new Color(.08f, .12f, .18f, .92f);
+            background.sprite = GetRoundedUiSprite();
+            background.type = Image.Type.Sliced;
+            background.color = AppleWhite;
             var toggle = root.AddComponent<Toggle>();
             toggle.group = group;
             toggle.targetGraphic = background;
@@ -1461,7 +1600,9 @@ namespace V2X.EditorTools
             checkRect.offsetMin = new Vector2(3f, 3f);
             checkRect.offsetMax = new Vector2(-3f, -3f);
             var checkImage = check.AddComponent<Image>();
-            checkImage.color = new Color(.1f, .55f, .85f, .7f);
+            checkImage.sprite = GetRoundedUiSprite();
+            checkImage.type = Image.Type.Sliced;
+            checkImage.color = AppleBlue;
             toggle.graphic = checkImage;
 
             var textGo = new GameObject("Label");
@@ -1474,8 +1615,8 @@ namespace V2X.EditorTools
             text.text = label;
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 18;
-            text.color = Color.white;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.color = AppleInk;
+            ApplyTypography(text, true);
             return toggle;
         }
 
@@ -1520,7 +1661,8 @@ namespace V2X.EditorTools
         /// window resize instead of drifting.</param>
         private static Text CreateHubLabel(
             Transform parent, string name, string content, Vector2 position,
-            Vector2 size, int fontSize, TextAnchor anchor, float anchorY = .5f)
+            Vector2 size, int fontSize, TextAnchor anchor, float anchorY = .5f,
+            Color? color = null, FontStyle fontStyle = FontStyle.Normal)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -1533,10 +1675,11 @@ namespace V2X.EditorTools
             text.text = content;
             text.alignment = anchor;
             text.fontSize = fontSize;
-            text.color = new Color(.92f, .95f, 1f);
+            text.color = color ?? AppleInk;
+            text.fontStyle = fontStyle;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            ApplyTypography(text, fontStyle == FontStyle.Bold);
             return text;
         }
 
@@ -1550,7 +1693,9 @@ namespace V2X.EditorTools
             rect.anchoredPosition = position;
             rect.sizeDelta = size;
             var image = go.AddComponent<Image>();
-            image.color = new Color(.06f, .09f, .14f, .92f);
+            image.sprite = GetRoundedUiSprite();
+            image.type = Image.Type.Sliced;
+            image.color = AppleWhite;
             return go.transform;
         }
 
@@ -1567,6 +1712,7 @@ namespace V2X.EditorTools
             {
                 text.alignment = TextAnchor.MiddleLeft;
                 text.fontSize = 21;
+                ApplyTypography(text, true);
                 var textRect = text.GetComponent<RectTransform>();
                 textRect.offsetMin = new Vector2(18f, 0f);
             }
@@ -1585,9 +1731,19 @@ namespace V2X.EditorTools
             rect.anchoredPosition = position;
             rect.sizeDelta = new Vector2(width, 44f);
             var image = go.AddComponent<Image>();
-            image.color = new Color(.08f, .12f, .18f, .92f);
+            image.sprite = GetRoundedUiSprite();
+            image.type = Image.Type.Sliced;
+            image.color = new Color(1f, 1f, 1f, .94f);
             var button = go.AddComponent<Button>();
             button.targetGraphic = image;
+            var colors = button.colors;
+            colors.normalColor = AppleWhite;
+            colors.highlightedColor = AppleParchment;
+            colors.pressedColor = new Color(.88f, .88f, .9f, 1f);
+            colors.selectedColor = AppleParchment;
+            colors.disabledColor = new Color(.82f, .82f, .84f, .72f);
+            colors.colorMultiplier = 1f;
+            button.colors = colors;
 
             var textGo = new GameObject("Label");
             textGo.transform.SetParent(go.transform, false);
@@ -1600,9 +1756,100 @@ namespace V2X.EditorTools
             text.text = label;
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 18;
-            text.color = Color.white;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.color = AppleInk;
+            ApplyTypography(text, true);
             return button;
+        }
+
+        private static void StylePrimaryButton(Button button)
+        {
+            if (button == null) return;
+            var image = button.targetGraphic as Image;
+            if (image != null) image.color = AppleBlue;
+            var colors = button.colors;
+            colors.normalColor = AppleBlue;
+            colors.highlightedColor = AppleBluePressed;
+            colors.pressedColor = new Color(0f, .32f, .68f, 1f);
+            colors.selectedColor = AppleBluePressed;
+            colors.disabledColor = new Color(.62f, .72f, .84f, .7f);
+            button.colors = colors;
+            var text = button.GetComponentInChildren<Text>();
+            if (text != null)
+            {
+                text.color = AppleWhite;
+                ApplyTypography(text, true);
+            }
+        }
+
+        private static void StyleSecondaryButton(Button button)
+        {
+            if (button == null) return;
+            if (button.targetGraphic is Image image)
+            {
+                image.sprite = GetRoundedUiSprite();
+                image.type = Image.Type.Sliced;
+                image.color = AppleWhite;
+            }
+            var colors = button.colors;
+            colors.normalColor = AppleWhite;
+            colors.highlightedColor = AppleParchment;
+            colors.pressedColor = new Color(.88f, .88f, .9f, 1f);
+            colors.selectedColor = AppleParchment;
+            colors.disabledColor = new Color(.82f, .82f, .84f, .72f);
+            colors.colorMultiplier = 1f;
+            button.colors = colors;
+            var text = button.GetComponentInChildren<Text>(true);
+            if (text != null)
+            {
+                text.color = AppleInk;
+                ApplyTypography(text, true);
+            }
+        }
+
+        private static void ApplyTypography(Text text, bool emphasized)
+        {
+            if (text == null) return;
+            var preferred = AssetDatabase.LoadAssetAtPath<Font>(
+                emphasized ? SemiboldFontAssetPath : RegularFontAssetPath);
+            text.font = preferred ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontStyle = FontStyle.Normal;
+            text.fontSize = Mathf.Max(text.fontSize, emphasized ? 18 : 16);
+            text.lineSpacing = 1.08f;
+            text.resizeTextForBestFit = false;
+        }
+
+        private static Sprite GetRoundedUiSprite()
+        {
+            foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(RoundedUiAssetPath))
+                if (asset is Sprite existing) return existing;
+
+            const int size = 64;
+            const float radius = 18f;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                name = "V2X UI Rounded Texture",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+            };
+            var pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float dx = Mathf.Max(radius - x - .5f, 0f, x + .5f - (size - radius));
+                float dy = Mathf.Max(radius - y - .5f, 0f, y + .5f - (size - radius));
+                float alpha = Mathf.Clamp01(radius + .5f - Mathf.Sqrt(dx * dx + dy * dy));
+                pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
+            }
+            texture.SetPixels(pixels);
+            texture.Apply();
+            AssetDatabase.CreateAsset(texture, RoundedUiAssetPath);
+            var sprite = Sprite.Create(texture, new Rect(0f, 0f, size, size),
+                new Vector2(.5f, .5f), 100f, 0, SpriteMeshType.FullRect,
+                new Vector4(radius, radius, radius, radius));
+            sprite.name = "V2X UI Rounded Sprite";
+            AssetDatabase.AddObjectToAsset(sprite, texture);
+            AssetDatabase.SaveAssets();
+            return sprite;
         }
 
         private static GameObject CreateCube(string name, Vector3 position, Vector3 scale, Color color)
