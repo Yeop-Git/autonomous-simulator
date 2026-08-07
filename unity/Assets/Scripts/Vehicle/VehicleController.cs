@@ -62,6 +62,10 @@ namespace V2X.Vehicle
         public float HeadingError => _lka.LastHeadingError;
         public string RequestedTargetLane { get; private set; }
 
+        // Room between the furthest point a through route uses and the edge
+        // that removes the vehicle, so neither end sits exactly on it.
+        private const float DespawnBoundaryMargin = 8f;
+
         private readonly List<Vector3> _path = new();
         private float _targetSpeed;
         private bool _hasCommand;
@@ -98,7 +102,17 @@ namespace V2X.Vehicle
                 : new Vector3(0f, 0f, Mathf.Sign(exitPoint.z));
             if (direction.sqrMagnitude < .001f) return;
 
-            despawnBoundary = Mathf.Max(Mathf.Abs(exitPoint.x), Mathf.Abs(exitPoint.z));
+            // The boundary has to clear where this vehicle *starts* as well as
+            // where it exits. On a track symmetric about the origin those are
+            // the same number — the LKA curve runs from -73.72 to +73.72 in x —
+            // so the car was already outside its own boundary and despawned on
+            // its first physics step, popping the retry panel before it moved.
+            // Every other scene happens to start near the middle, which is why
+            // only one of them ever showed it.
+            float exitExtent = Mathf.Max(Mathf.Abs(exitPoint.x), Mathf.Abs(exitPoint.z));
+            float startExtent = Mathf.Max(Mathf.Abs(transform.position.x),
+                                          Mathf.Abs(transform.position.z));
+            despawnBoundary = Mathf.Max(exitExtent, startExtent) + DespawnBoundaryMargin;
             destroyOutsideBoundary = true;
             goal.position = exitPoint + direction * throughGoalExtension;
         }
