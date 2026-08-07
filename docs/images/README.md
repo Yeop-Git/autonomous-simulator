@@ -15,8 +15,11 @@
 | `docs/videos/emergency-avoidance-demo.gif` | EmergencyAvoidance | 낙하물 회피, 긴급차 대응, 차선 복귀 |
 | `docs/videos/integrated-city-demo.gif` | IntegratedCity | 통합 경로 계획과 동적 이벤트 구간 |
 
-새로 촬영한 GIF는 800×450, 96색, 무음으로 인코딩했다. IntegratedCity GIF는
-960×540이다. 파일별 tick과 촬영 시각은
+GIF는 원본 프레임 사이에서 변화가 완만한 주행 영역만 보간해 기본 300–400 ms
+간격, 48색, 무음으로 인코딩했다. IntegratedCity의 마지막 프레임은 종료 화면을
+위해 600 ms 유지한다. 색상·위치 변화가 큰 객체와 HUD·조작부는 실제 캡처 프레임을
+사용한다. 기본 해상도는 800×450이며 IntegratedCity는 960×540이다. 파일별
+tick과 촬영 시각은
 [`docs/videos/capture-log.csv`](../videos/capture-log.csv)에 기록한다. GIF의 재생
 간격은 문서 설명용이며 성능 계측값으로 사용하지 않는다.
 
