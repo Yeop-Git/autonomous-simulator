@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 0.8
   m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 2100000, guid: d48a7646f5d0547e889733d84b50cb9f, type: 2}
+  m_SkyboxMaterial: {fileID: 2100000, guid: 12ccb828343c3405fb94289774b51aad, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -2464,7 +2464,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "1 \uC6B4\uC804\uC790"
+  m_Text: "1 \uCC28\uB7C9"
 --- !u!222 &197435758
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -4792,7 +4792,7 @@ GameObject:
   - component: {fileID: 356634996}
   - component: {fileID: 356634995}
   m_Layer: 0
-  m_Name: "Button 2 \uCC28\uB7C9"
+  m_Name: "Button 2 \uC6B4\uC804\uC790"
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -8984,7 +8984,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "2 \uCC28\uB7C9"
+  m_Text: "2 \uC6B4\uC804\uC790"
 --- !u!222 &611827133
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -21722,8 +21722,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::V2X.UI.CameraViewController
   cameras:
-  - {fileID: 489410062}
   - {fileID: 747362562}
+  - {fileID: 489410062}
   - {fileID: 1330633833}
   buttons:
   - {fileID: 2003474594}
@@ -28349,7 +28349,7 @@ GameObject:
   - component: {fileID: 2003474595}
   - component: {fileID: 2003474594}
   m_Layer: 0
-  m_Name: "Button 1 \uC6B4\uC804\uC790"
+  m_Name: "Button 1 \uCC28\uB7C9"
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

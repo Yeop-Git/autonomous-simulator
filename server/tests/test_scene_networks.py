@@ -252,6 +252,8 @@ def test_scene_drives_a_protocol_valid_loop(scene):
     """Run each scene's own network through the real controller and check both
     wire messages against their schemas — including the ``scenario`` string,
     which is how the stale lane-network enum went unnoticed."""
+    if not _scene_lane_ids(scene):
+        pytest.skip(f"{scene} has no road (hub/menu scene)")
     network = LaneNetwork.from_json(SCENARIO_DIR / f"{scene}_lanes.json")
     controller = CentralController(network)
     sim = HeadlessSim(network, controller, scenario=network.scenario)

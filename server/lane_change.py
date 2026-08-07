@@ -41,6 +41,26 @@ def _arc(network: LaneNetwork, lane_id: str, position) -> Optional[float]:
     return arc
 
 
+def _joining_arc(network: LaneNetwork, other: DynamicVehicle,
+                 target_lane: str) -> Optional[float]:
+    """Where ``other`` sits in ``target_lane``'s frame while still off it.
+
+    A vehicle on a lane that *feeds* the target has not been tagged onto it
+    yet, so matching on ``current_lane`` skips it entirely — and then a
+    mainline car happily changes into the very lane an on-ramp is merging
+    into. Place it at the junction less however much of its own lane it still
+    has to cover, which is the same "how far along the road" measure the gap
+    test applies to everyone else.
+    """
+    lane = network.lane(other.current_lane) if other.current_lane else None
+    target = network.lane(target_lane)
+    if lane is None or target is None or target_lane not in lane.next_lane_ids:
+        return None
+    entry_arc = target.closest_point(lane.end)[2]
+    _, _, own_arc = lane.closest_point(other.position)
+    return entry_arc - max(0.0, lane.length - own_arc)
+
+
 def evaluate(ego: DynamicVehicle, target_lane: str,
              others: Iterable[DynamicVehicle], network: LaneNetwork,
              predictor: Optional[CollisionPredictor] = None,
@@ -56,9 +76,11 @@ def evaluate(ego: DynamicVehicle, target_lane: str,
     lead_gap, lead = math.inf, None
     lag_gap, lag = math.inf, None
     for o in others:
-        if o.id == ego.id or o.current_lane != target_lane:
+        if o.id == ego.id:
             continue
-        o_arc = _arc(network, target_lane, o.position)
+        o_arc = (_arc(network, target_lane, o.position)
+                 if o.current_lane == target_lane
+                 else _joining_arc(network, o, target_lane))
         if o_arc is None:
             continue
         delta = o_arc - ego_arc

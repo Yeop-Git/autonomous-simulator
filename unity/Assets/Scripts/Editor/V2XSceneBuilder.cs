@@ -1308,12 +1308,15 @@ namespace V2X.EditorTools
             lookAnchor.localPosition = new Vector3(0f, 1.2f, 14f);
             lookAnchor.localRotation = Quaternion.identity;
 
+            // Order matters: CameraViewController selects index 0 on Awake and
+            // binds keys 1/2/3 to the slots in order, so the chase camera comes
+            // first — that is the shot a scene should open on.
             var cameras = new[]
             {
-                CreateCinemachineCamera("CM Driver", followAnchor, lookAnchor,
-                    new Vector3(0f, 1.45f, .55f), 72f, BindingMode.LockToTargetWithWorldUp),
                 CreateCinemachineCamera("CM Vehicle", followAnchor, lookAnchor,
                     new Vector3(0f, 4.2f, -11f), 58f, BindingMode.LockToTargetWithWorldUp),
+                CreateCinemachineCamera("CM Driver", followAnchor, lookAnchor,
+                    new Vector3(0f, 1.45f, .55f), 72f, BindingMode.LockToTargetWithWorldUp),
                 CreateOverviewCamera("CM Overview",
                     overviewPosition ?? target.transform.position + new Vector3(50f, 90f, -50f),
                     overviewLookAt ?? target.transform.position, 68f),
@@ -1334,8 +1337,8 @@ namespace V2X.EditorTools
 
             var cameraButtons = new[]
             {
-                CreateButton(canvas.transform, "1 운전자", new Vector2(-130f, 38f)),
-                CreateButton(canvas.transform, "2 차량", new Vector2(0f, 38f)),
+                CreateButton(canvas.transform, "1 차량", new Vector2(-130f, 38f)),
+                CreateButton(canvas.transform, "2 운전자", new Vector2(0f, 38f)),
                 CreateButton(canvas.transform, "3 전경", new Vector2(130f, 38f)),
             };
             var view = canvasGo.AddComponent<CameraViewController>();

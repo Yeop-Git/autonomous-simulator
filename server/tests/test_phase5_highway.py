@@ -391,8 +391,8 @@ def test_ramp_car_stopped_beside_the_mainline_does_not_deadlock_the_highway():
     ("IntegratedCity", {"city_boulevard_escape"}),  # slower strip beside the main
     ("Urban", set()),                               # turn connectors are not merges
     ("EmergencyAvoidance", set()),                  # parallel lanes, no successors
+    # Main is the hub: no road, so no export to classify.
     ("LKA_Test", set()),
-    ("Main", set()),
 ])
 def test_merge_reservation_targets_are_topological_not_named(scene, expected):
     """Which lanes get a slot reservation, per authored scene.
